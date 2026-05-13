@@ -62,7 +62,7 @@ func status(ctx context.Context, args []string) error {
 }
 
 func stop(ctx context.Context, args []string) error {
-	fs, opts := commandFlags("stop", flagSpec{Target: true, Repo: true})
+	fs, opts := commandFlags("stop", flagSpec{Target: true, Repo: true, JSON: true})
 	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
@@ -71,7 +71,24 @@ func stop(ctx context.Context, args []string) error {
 		return err
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {
-		return b.Stop(ctx, workspace)
+		wasRunning := b.Exists(ctx, workspace.VMName) && b.IsRunning(ctx, workspace.VMName)
+		if err := b.Stop(ctx, workspace); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return writeJSON(os.Stdout, map[string]any{
+				"workspace":   viewWorkspace(workspace),
+				"vm_name":     workspace.VMName,
+				"was_running": wasRunning,
+				"stopped":     true,
+			})
+		}
+		if wasRunning {
+			fmt.Printf("stopped VM: %s\n", workspace.VMName)
+		} else {
+			fmt.Printf("VM already stopped: %s\n", workspace.VMName)
+		}
+		return nil
 	})
 }
 
@@ -101,6 +118,13 @@ func destroy(ctx context.Context, args []string) error {
 		if err := b.Destroy(ctx, workspace); err != nil {
 			return err
 		}
+		workspace.LastKnownIP = ""
+		workspace.SyncFingerprint = ""
+		workspace.LastSyncAt = time.Time{}
+		workspace.LastRunLog = ""
+		if err := store.SaveWorkspace(workspace); err != nil {
+			return fmt.Errorf("clear workspace runtime state: %w", err)
+		}
 		out := map[string]any{
 			"selection":               selection,
 			"workspace":               viewWorkspace(workspace),
@@ -108,6 +132,7 @@ func destroy(ctx context.Context, args []string) error {
 			"vm_deleted":              vmExisted,
 			"host_checkout_untouched": workspace.RepoRoot,
 			"workspace_state_kept":    true,
+			"runtime_state_cleared":   true,
 		}
 		if opts.JSON {
 			return writeJSON(os.Stdout, out)

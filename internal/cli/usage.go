@@ -69,7 +69,7 @@ Usage:
 		"stop": `trybox stop: stop a workspace VM without deleting it
 
 Usage:
-  trybox stop [--target name] [--repo path]
+  trybox stop [--target name] [--repo path] [--json]
 `,
 		"sync": `trybox sync: sync the source checkout into the guest workspace
 
@@ -142,7 +142,7 @@ Usage:
   trybox logs <run-id>
   trybox run [--target name] [--repo path] [--json] -- <command>
   trybox status [--target name] [--repo path] [--json]
-  trybox stop [--target name] [--repo path]
+  trybox stop [--target name] [--repo path] [--json]
   trybox sync [--target name] [--repo path] [--json]
   trybox sync-plan [--repo path] [--limit n] [--json]
   trybox target list [--json]

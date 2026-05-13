@@ -64,7 +64,10 @@ trybox run -- <small visible test command>
 
 - Sync includes `.git`/`.hg`; repo tooling may need VCS metadata.
 - Large syncs are expected; do not drop metadata just for speed.
-- Guest workspace path is `~/trybox`.
+- Guest workspace path is `/Users/admin/trybox`. The host shell expands `~`
+  before `trybox run` sees argv, so `~/trybox` becomes the host home. Use
+  the absolute guest path, or wrap the command in single quotes:
+  `trybox run -- bash -c 'cd /Users/admin/trybox && ./mach --help'`.
 - On failure, inspect `trybox events <run-id> --json` and `trybox logs
   <run-id>` before retrying.
 - Early images may use `admin` / `admin`; `trybox view` automates auto-login.

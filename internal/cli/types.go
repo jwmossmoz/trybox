@@ -35,19 +35,19 @@ type targetView struct {
 }
 
 type workspaceView struct {
-	ID              string    `json:"id"`
-	Target          string    `json:"target"`
-	RepoRoot        string    `json:"repo_root"`
-	VMName          string    `json:"vm_name"`
-	CPU             int       `json:"cpu,omitempty"`
-	MemoryMB        int       `json:"memory_mb,omitempty"`
-	DiskGB          int       `json:"disk_gb,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	LastRunLog      string    `json:"last_run_log,omitempty"`
-	LastKnownIP     string    `json:"last_known_ip,omitempty"`
-	SyncFingerprint string    `json:"sync_fingerprint,omitempty"`
-	LastSyncAt      time.Time `json:"last_sync_at,omitempty"`
+	ID              string     `json:"id"`
+	Target          string     `json:"target"`
+	RepoRoot        string     `json:"repo_root"`
+	VMName          string     `json:"vm_name"`
+	CPU             int        `json:"cpu,omitempty"`
+	MemoryMB        int        `json:"memory_mb,omitempty"`
+	DiskGB          int        `json:"disk_gb,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	LastRunLog      string     `json:"last_run_log,omitempty"`
+	LastKnownIP     string     `json:"last_known_ip,omitempty"`
+	SyncFingerprint string     `json:"sync_fingerprint,omitempty"`
+	LastSyncAt      *time.Time `json:"last_sync_at,omitempty"`
 }
 
 type runView struct {

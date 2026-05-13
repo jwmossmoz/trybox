@@ -23,7 +23,7 @@ func viewTarget(target targets.Target) targetView {
 }
 
 func viewWorkspace(workspace state.Workspace) workspaceView {
-	return workspaceView{
+	view := workspaceView{
 		ID:              workspace.ID,
 		Target:          workspace.Target,
 		RepoRoot:        workspace.RepoRoot,
@@ -36,8 +36,12 @@ func viewWorkspace(workspace state.Workspace) workspaceView {
 		LastRunLog:      workspace.LastRunLog,
 		LastKnownIP:     workspace.LastKnownIP,
 		SyncFingerprint: workspace.SyncFingerprint,
-		LastSyncAt:      workspace.LastSyncAt,
 	}
+	if !workspace.LastSyncAt.IsZero() {
+		t := workspace.LastSyncAt
+		view.LastSyncAt = &t
+	}
+	return view
 }
 
 func viewRun(run state.Run) runView {

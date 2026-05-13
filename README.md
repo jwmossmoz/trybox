@@ -110,7 +110,7 @@ trybox history [--limit n] [--json]
 trybox logs <run-id>
 trybox run [--target name] [--repo path] [--json] -- <command>
 trybox status [--target name] [--repo path] [--json]
-trybox stop [--target name] [--repo path]
+trybox stop [--target name] [--repo path] [--json]
 trybox sync [--target name] [--repo path] [--json]
 trybox sync-plan [--repo path] [--limit n] [--json]
 trybox target list [--json]
@@ -123,7 +123,21 @@ trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--
 
 `trybox destroy` deletes only the selected workspace VM. Without `--target` or
 `--repo`, it selects the configured default workspace. It does not delete the
-host checkout, run logs, or workspace metadata.
+host checkout, run logs, or workspace metadata. Stale runtime state on the
+workspace record (last known IP, sync fingerprint, last sync timestamp, last
+run log) is cleared so the next `trybox up` starts fresh.
+
+## Guest Paths and Shell Expansion
+
+The synced checkout lives at `/Users/admin/trybox` inside the guest. The host
+shell expands `~` before `trybox run` sees the argv, so `~/trybox` resolves to
+the host home, not the guest's. Use the absolute guest path, or wrap the
+command in single quotes to defer expansion:
+
+```sh
+trybox run -- bash -c 'cd /Users/admin/trybox && ./mach --help'
+trybox run -- bash -lc 'cd "$HOME/trybox" && ./mach --help'
+```
 
 ## More Detail
 
