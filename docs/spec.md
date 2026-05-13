@@ -7,7 +7,8 @@ debugging.
 
 - Go CLI.
 - Tart backend for Apple Silicon macOS.
-- Built-in macOS 15 arm64 targets.
+- Built-in macOS targets for the public macOS families Tart currently
+  publishes.
 - Trybox-owned macOS target image.
 - Repo-bound VM claims.
 - Durable run logs.

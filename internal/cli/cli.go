@@ -39,13 +39,12 @@ type syncResult struct {
 }
 
 type targetView struct {
-	Name         string   `json:"name"`
-	OS           string   `json:"os"`
-	Version      string   `json:"version"`
-	Arch         string   `json:"arch"`
-	Runnable     bool     `json:"runnable"`
-	Notes        string   `json:"notes,omitempty"`
-	Capabilities []string `json:"capabilities"`
+	Name     string `json:"name"`
+	OS       string `json:"os"`
+	Version  string `json:"version"`
+	Arch     string `json:"arch"`
+	Runnable bool   `json:"runnable"`
+	Notes    string `json:"notes,omitempty"`
 }
 
 type claimView struct {
@@ -768,8 +767,8 @@ func writeRemoteFingerprint(ctx context.Context, target targets.Target, claim st
 }
 
 func remoteWorkPath(target targets.Target) string {
-	if target.WorkPath != "" {
-		return target.WorkPath
+	if target.GuestWorkPath != "" {
+		return target.GuestWorkPath
 	}
 	return filepath.Join("/Users", target.Username, "trybox", "work", "firefox")
 }
@@ -780,13 +779,12 @@ func remoteFingerprintPath(target targets.Target) string {
 
 func viewTarget(target targets.Target) targetView {
 	return targetView{
-		Name:         target.Name,
-		OS:           target.OS,
-		Version:      target.Version,
-		Arch:         target.Arch,
-		Runnable:     target.Runnable,
-		Notes:        target.Notes,
-		Capabilities: target.Capabilities,
+		Name:     target.Name,
+		OS:       target.OS,
+		Version:  target.Version,
+		Arch:     target.Arch,
+		Runnable: target.Runnable,
+		Notes:    target.Notes,
 	}
 }
 

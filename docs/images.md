@@ -90,3 +90,19 @@ https://tart.run/quick-start/
 
 That is enough for a first `trybox bootstrap`, but Trybox should treat it as a
 seed, not as the stable product image.
+
+## Tart macOS Seed Coverage
+
+Trybox's built-in macOS target catalog should track the macOS families that Tart
+publishes public base images for:
+
+| Trybox targets | Tart seed image |
+| --- | --- |
+| `macos12-arm64`, `macos12-x64-rosetta` | `ghcr.io/cirruslabs/macos-monterey-base:latest` |
+| `macos13-arm64`, `macos13-x64-rosetta` | `ghcr.io/cirruslabs/macos-ventura-base:latest` |
+| `macos14-arm64`, `macos14-x64-rosetta` | `ghcr.io/cirruslabs/macos-sonoma-base:latest` |
+| `macos15-arm64`, `macos15-x64-rosetta` | `ghcr.io/cirruslabs/macos-sequoia-base:latest` |
+| `macos26-arm64`, `macos26-x64-rosetta` | `ghcr.io/cirruslabs/macos-tahoe-base:latest` |
+
+Those seed names are an implementation aid for bootstrap. The normal agent
+workflow should still use Trybox targets, not Tart image names.

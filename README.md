@@ -2,8 +2,8 @@
 
 Trybox creates clean local debugging workspaces for Firefox development.
 
-The first backend is Tart on Apple Silicon macOS. It starts a clean macOS 15
-arm64 VM, syncs the local Firefox checkout, runs commands inside the guest, and
+The first backend is Tart on Apple Silicon macOS. It starts a clean macOS VM
+target, syncs the local Firefox checkout, runs commands inside the guest, and
 stores durable logs for humans and agents. It intentionally does not run
 production provisioning, inject CI credentials, or register with CI.
 
@@ -42,10 +42,11 @@ go build -o trybox ./cmd/trybox
 
 Built-in targets:
 
-- `macos15-arm64`: default macOS 15 Apple Silicon target
-- `macos15-x64-rosetta`: macOS 15 target for x64 behavior through Rosetta
-- macOS 10.15 and 14 targets are reference-only until Trybox has a backend
-  that can reproduce them locally.
+- `macos12-arm64` / `macos12-x64-rosetta`
+- `macos13-arm64` / `macos13-x64-rosetta`
+- `macos14-arm64` / `macos14-x64-rosetta`
+- `macos15-arm64` / `macos15-x64-rosetta`
+- `macos26-arm64` / `macos26-x64-rosetta`
 
 These targets are local OS and architecture shapes. They do not expose production
 pooling concepts, create pools, or talk to Taskcluster.
@@ -106,3 +107,6 @@ trybox destroy [--target name] [--repo path]
 See [docs/architecture.md](docs/architecture.md) and
 [docs/security.md](docs/security.md). Image ownership and bootstrap strategy
 are covered in [docs/images.md](docs/images.md).
+
+Agent instructions live in [AGENTS.md](AGENTS.md). Repo-local agent skills live
+under [.agents/skills](.agents/skills).
