@@ -50,6 +50,24 @@ Built-in targets:
 These targets are local OS and architecture shapes. They do not expose production
 pooling concepts, create pools, or talk to Taskcluster.
 
+## Target Images
+
+`trybox up` expects a local target image that is already SSH-ready. That image
+should be owned by Trybox, even if the first version is bootstrapped from a
+public Tart image.
+
+The image layers are:
+
+- source image: immutable seed image, eventually hosted by Trybox
+- target image: local golden image for a target such as `macos15-arm64`
+- workspace VM: disposable clone used for one repo-bound workspace
+
+The planned first-time setup command is:
+
+```sh
+trybox bootstrap --target macos15-arm64
+```
+
 ## Commands
 
 ```sh
@@ -86,4 +104,5 @@ trybox destroy [--target name] [--repo path]
   first phase.
 
 See [docs/architecture.md](docs/architecture.md) and
-[docs/security.md](docs/security.md).
+[docs/security.md](docs/security.md). Image ownership and bootstrap strategy
+are covered in [docs/images.md](docs/images.md).

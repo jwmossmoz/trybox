@@ -46,70 +46,25 @@ trybox CLI
 ## Current Implementation Diagram
 
 ```mermaid
-flowchart LR
-    actor["human or agent"] --> cli["trybox CLI<br/>cmd/trybox"]
+flowchart TD
+    user["Human or agent"] --> cli["Trybox CLI"]
 
-    cli --> commands{"command"}
-    commands --> doctor["doctor"]
-    commands --> targetsCmd["target list"]
-    commands --> up["up"]
-    commands --> syncCmd["sync / sync-plan"]
-    commands --> runCmd["run"]
-    commands --> inspect["status / history / logs / events"]
+    cli --> targets["Target catalog<br/>macOS version + architecture"]
+    cli --> lifecycle["Workspace lifecycle<br/>up / status / stop / destroy"]
+    cli --> sync["Source sync<br/>sync-plan / sync"]
+    cli --> run["Command execution<br/>run"]
 
-    subgraph control["local control plane"]
-        registry["target registry<br/>internal/targets"]
-        coordinator["workspace and run coordinator<br/>internal/cli"]
-        store["state store<br/>internal/state"]
-        planner["Git manifest planner<br/>internal/workspace"]
-        backendAPI["backend interface<br/>internal/backend"]
-    end
+    targets --> backend["VM backend<br/>Tart today"]
+    lifecycle --> backend
+    backend --> vm["Clean local macOS VM"]
 
-    cli --> coordinator
-    coordinator --> registry
-    coordinator --> store
-    coordinator --> planner
-    coordinator --> backendAPI
+    sync --> checkout["Host Firefox checkout"]
+    checkout --> workspace["Guest workspace<br/>~/trybox/work/firefox"]
+    vm --> workspace
+    run --> workspace
 
-    subgraph state["durable local state"]
-        claims["claims/*.json<br/>workspace metadata"]
-        runs["runs/run_*/<br/>meta.json stdout.log stderr.log events.ndjson"]
-        keys["keys/<claim>/id_ed25519"]
-        vmLogs["logs/<vm>.log"]
-    end
-
-    store --> claims
-    store --> runs
-    store --> keys
-    store --> vmLogs
-
-    subgraph source["host Firefox checkout"]
-        git["git ls-files<br/>tracked + nonignored files"]
-        manifest["NUL manifest<br/>fingerprint"]
-    end
-
-    planner --> git
-    git --> manifest
-    manifest --> rsync["rsync over SSH"]
-
-    backendAPI --> tart["Tart backend<br/>internal/backend/tart.go"]
-    tart --> tartCLI["tart CLI<br/>clone / set / run / ip / stop / delete"]
-    tartCLI --> vm["clean macOS VM<br/>target image clone"]
-
-    coordinator --> sshExec["SSH command execution<br/>internal/sshx"]
-    sshExec --> vm
-    rsync --> vm
-
-    subgraph guest["guest workspace"]
-        workdir["~/trybox/work/firefox"]
-        fingerprint[".trybox/sync-fingerprint"]
-        command["requested command<br/>for example ./mach ..."]
-    end
-
-    vm --> workdir
-    workdir --> fingerprint
-    workdir --> command
-    command --> runs
+    cli --> state["Durable Trybox state<br/>workspaces, runs, logs, events, keys"]
+    state --> user
 ```
 
 ## State
@@ -164,6 +119,9 @@ require access to CI secrets.
 The first implementation expects a Trybox macOS target image with SSH enabled.
 Creating that target image is part of the Trybox setup story, not something
 the agent-facing `up/sync/run` flow should expose.
+
+See [images.md](images.md) for the source image, target image, and workspace VM
+model.
 
 ## Large Repository Strategy
 
