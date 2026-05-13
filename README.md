@@ -95,22 +95,22 @@ trybox bootstrap --target macos15-arm64
 ## Commands
 
 ```sh
+trybox destroy [--target name] [--repo path]
 trybox doctor [--json]
-trybox target list [--json]
-trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
-trybox workspace show [--json]
-trybox workspace clear
-trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n]
-trybox sync [--target name] [--repo path] [--json]
-trybox sync-plan [--repo path] [--limit n] [--json]
-trybox run [--target name] [--repo path] [--json] -- <command>
-trybox status [--target name] [--repo path] [--json]
-trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
+trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
 trybox logs <run-id>
-trybox events <run-id> [--json]
+trybox run [--target name] [--repo path] [--json] -- <command>
+trybox status [--target name] [--repo path] [--json]
 trybox stop [--target name] [--repo path]
-trybox destroy [--target name] [--repo path]
+trybox sync [--target name] [--repo path] [--json]
+trybox sync-plan [--repo path] [--limit n] [--json]
+trybox target list [--json]
+trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n]
+trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
+trybox workspace clear
+trybox workspace show [--json]
+trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
 ```
 
 ## More Detail
