@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,20 +23,26 @@ import (
 )
 
 type options struct {
-	Target   string
-	Repo     string
-	JSON     bool
-	Headless bool
+	Target    string
+	TargetSet bool
+	Repo      string
+	JSON      bool
+	Headless  bool
+	VNC       bool
+	CPU       int
+	MemoryMB  int
+	DiskGB    int
 }
 
 type syncResult struct {
-	RepoRoot    string `json:"repo_root"`
-	RemotePath  string `json:"remote_path"`
-	Fingerprint string `json:"fingerprint"`
-	FileCount   int    `json:"file_count"`
-	TotalBytes  int64  `json:"total_bytes"`
-	Skipped     bool   `json:"skipped"`
-	Duration    string `json:"duration"`
+	RepoRoot    string   `json:"repo_root"`
+	RemotePath  string   `json:"remote_path"`
+	Fingerprint string   `json:"fingerprint"`
+	FileCount   int      `json:"file_count"`
+	TotalBytes  int64    `json:"total_bytes"`
+	Warnings    []string `json:"warnings,omitempty"`
+	Skipped     bool     `json:"skipped"`
+	Duration    string   `json:"duration"`
 }
 
 type targetView struct {
@@ -47,10 +54,14 @@ type targetView struct {
 	Notes    string `json:"notes,omitempty"`
 }
 
-type claimView struct {
+type workspaceView struct {
 	ID              string    `json:"id"`
 	Target          string    `json:"target"`
 	RepoRoot        string    `json:"repo_root"`
+	VMName          string    `json:"vm_name"`
+	CPU             int       `json:"cpu,omitempty"`
+	MemoryMB        int       `json:"memory_mb,omitempty"`
+	DiskGB          int       `json:"disk_gb,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	LastRunLog      string    `json:"last_run_log,omitempty"`
@@ -60,17 +71,17 @@ type claimView struct {
 }
 
 type runView struct {
-	ID        string    `json:"id"`
-	ClaimID   string    `json:"claim_id"`
-	Target    string    `json:"target"`
-	RepoRoot  string    `json:"repo_root"`
-	Command   []string  `json:"command"`
-	StartedAt time.Time `json:"started_at"`
-	EndedAt   time.Time `json:"ended_at,omitempty"`
-	ExitCode  int       `json:"exit_code"`
-	StdoutLog string    `json:"stdout_log"`
-	StderrLog string    `json:"stderr_log"`
-	EventsLog string    `json:"events_log"`
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Target      string    `json:"target"`
+	RepoRoot    string    `json:"repo_root"`
+	Command     []string  `json:"command"`
+	StartedAt   time.Time `json:"started_at"`
+	EndedAt     time.Time `json:"ended_at,omitempty"`
+	ExitCode    int       `json:"exit_code"`
+	StdoutLog   string    `json:"stdout_log"`
+	StderrLog   string    `json:"stderr_log"`
+	EventsLog   string    `json:"events_log"`
 }
 
 func Run(ctx context.Context, args []string) error {
@@ -87,12 +98,16 @@ func Run(ctx context.Context, args []string) error {
 		return doctor(ctx, args[1:])
 	case "target":
 		return target(ctx, args[1:])
+	case "workspace":
+		return workspaceCommand(ctx, args[1:])
 	case "warmup", "up":
 		return warmup(ctx, args[1:])
 	case "sync":
 		return syncWorkspace(ctx, args[1:])
 	case "status":
 		return status(ctx, args[1:])
+	case "view":
+		return view(ctx, args[1:])
 	case "stop":
 		return stop(ctx, args[1:])
 	case "destroy":
@@ -130,14 +145,35 @@ func (e exitError) Error() string {
 }
 
 func baseFlags(name string, args []string) (*flag.FlagSet, *options) {
-	opts := &options{Target: "macos15-arm64", Headless: true}
+	opts := &options{Headless: true}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&opts.Target, "target", opts.Target, "target name")
+	fs.Var(targetFlag{opts: opts}, "target", "target name")
 	fs.StringVar(&opts.Repo, "repo", "", "repository root")
 	fs.BoolVar(&opts.JSON, "json", false, "emit JSON")
 	fs.BoolVar(&opts.Headless, "headless", true, "run VM without graphics")
+	fs.BoolVar(&opts.VNC, "vnc", false, "start VM with VNC display")
+	fs.IntVar(&opts.CPU, "cpu", 0, "override VM CPU count for this workspace")
+	fs.IntVar(&opts.MemoryMB, "memory-mb", 0, "override VM memory in MiB for this workspace")
+	fs.IntVar(&opts.DiskGB, "disk-gb", 0, "override VM disk size in GiB for this workspace")
 	return fs, opts
+}
+
+type targetFlag struct {
+	opts *options
+}
+
+func (f targetFlag) String() string {
+	if f.opts == nil {
+		return ""
+	}
+	return f.opts.Target
+}
+
+func (f targetFlag) Set(value string) error {
+	f.opts.Target = value
+	f.opts.TargetSet = true
+	return nil
 }
 
 func doctor(ctx context.Context, args []string) error {
@@ -145,7 +181,11 @@ func doctor(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	target, err := targets.Get(opts.Target)
+	_, config, err := loadStoreConfig()
+	if err != nil {
+		return err
+	}
+	target, err := targets.Get(targetNameFor(opts, config))
 	if err != nil {
 		return err
 	}
@@ -226,22 +266,147 @@ func target(ctx context.Context, args []string) error {
 	return nil
 }
 
+func workspaceCommand(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: trybox workspace use [repo] | show | clear")
+	}
+	switch args[0] {
+	case "use":
+		return workspaceUse(ctx, args[1:])
+	case "show", "current":
+		return workspaceShow(ctx, args[1:])
+	case "clear":
+		return workspaceClear(ctx, args[1:])
+	default:
+		return fmt.Errorf("usage: trybox workspace use [repo] | show | clear")
+	}
+}
+
+func workspaceUse(ctx context.Context, args []string) error {
+	fs, opts := baseFlags("workspace use", args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: trybox workspace use [repo]")
+	}
+	repoInput := opts.Repo
+	if len(rest) == 1 {
+		repoInput = rest[0]
+	}
+	store, config, err := loadStoreConfig()
+	if err != nil {
+		return err
+	}
+	repo, err := resolveRepoForUse(repoInput)
+	if err != nil {
+		return err
+	}
+	target, err := targets.Get(targetNameFor(opts, config))
+	if err != nil {
+		return err
+	}
+	workspace, err := loadOrCreateWorkspace(store, target, repo)
+	if err != nil {
+		return err
+	}
+	applyResourceOverrides(&workspace, target, opts)
+	if err := store.SaveWorkspace(workspace); err != nil {
+		return err
+	}
+	config.DefaultTarget = target.Name
+	config.DefaultRepoRoot = repo
+	config.DefaultWorkspaceID = workspace.ID
+	if err := store.SaveConfig(config); err != nil {
+		return err
+	}
+	if opts.JSON {
+		return writeJSON(os.Stdout, map[string]any{
+			"default_target":       config.DefaultTarget,
+			"default_repo_root":    config.DefaultRepoRoot,
+			"default_workspace_id": config.DefaultWorkspaceID,
+			"workspace":            viewWorkspace(workspace),
+		})
+	}
+	fmt.Printf("default workspace: %s\ntarget:            %s\nrepo:              %s\nvm:                %s\n", workspace.ID, target.Name, repo, workspace.VMName)
+	_ = ctx
+	return nil
+}
+
+func workspaceShow(ctx context.Context, args []string) error {
+	fs, opts := baseFlags("workspace show", args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	store, config, err := loadStoreConfig()
+	if err != nil {
+		return err
+	}
+	var workspace *workspaceView
+	if config.DefaultWorkspaceID != "" {
+		if value, err := store.LoadWorkspace(config.DefaultWorkspaceID); err == nil {
+			view := viewWorkspace(value)
+			workspace = &view
+		}
+	}
+	out := map[string]any{
+		"default_target":       config.DefaultTarget,
+		"default_repo_root":    config.DefaultRepoRoot,
+		"default_workspace_id": config.DefaultWorkspaceID,
+		"workspace":            workspace,
+	}
+	if opts.JSON {
+		return writeJSON(os.Stdout, out)
+	}
+	if config.DefaultWorkspaceID == "" {
+		fmt.Println("default workspace: unset")
+		return nil
+	}
+	fmt.Printf("default workspace: %s\ntarget:            %s\nrepo:              %s\n", config.DefaultWorkspaceID, config.DefaultTarget, config.DefaultRepoRoot)
+	if workspace != nil {
+		fmt.Printf("vm:                %s\n", workspace.VMName)
+	}
+	_ = ctx
+	return nil
+}
+
+func workspaceClear(ctx context.Context, args []string) error {
+	fs, opts := baseFlags("workspace clear", args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	store, _, err := loadStoreConfig()
+	if err != nil {
+		return err
+	}
+	if err := store.SaveConfig(state.Config{}); err != nil {
+		return err
+	}
+	if opts.JSON {
+		return writeJSON(os.Stdout, map[string]any{"default_workspace_id": ""})
+	}
+	fmt.Println("default workspace: cleared")
+	_ = ctx
+	return nil
+}
+
 func warmup(ctx context.Context, args []string) error {
 	fs, opts := baseFlags("warmup", args)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	target, claim, b, store, err := setup(opts)
+	target, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	if err := ensureVM(ctx, target, &claim, b, store, opts.Headless); err != nil {
+	if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
 		return err
 	}
 	if opts.JSON {
-		return writeJSON(os.Stdout, viewClaim(claim))
+		return writeJSON(os.Stdout, viewWorkspace(workspace))
 	}
-	fmt.Printf("workspace: %s\ntarget:    %s\nip:        %s\nrepo:      %s\n", claim.ID, claim.Target, claim.LastKnownIP, claim.RepoRoot)
+	fmt.Printf("workspace: %s\ntarget:    %s\nvm:        %s\nip:        %s\nrepo:      %s\n", workspace.ID, workspace.Target, workspace.VMName, workspace.LastKnownIP, workspace.RepoRoot)
 	return nil
 }
 
@@ -250,20 +415,20 @@ func status(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, claim, b, store, err := setup(opts)
+	_, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	exists := b.Exists(ctx, claim.VMName)
-	running := b.IsRunning(ctx, claim.VMName)
+	exists := b.Exists(ctx, workspace.VMName)
+	running := b.IsRunning(ctx, workspace.VMName)
 	ip := ""
 	if running {
-		ip, _ = b.IP(ctx, claim, 1)
-		claim.LastKnownIP = ip
-		_ = store.SaveClaim(claim)
+		ip, _ = b.IP(ctx, workspace, 1)
+		workspace.LastKnownIP = ip
+		_ = store.SaveWorkspace(workspace)
 	}
 	out := map[string]any{
-		"workspace": viewClaim(claim),
+		"workspace": viewWorkspace(workspace),
 		"exists":    exists,
 		"running":   running,
 		"ip":        ip,
@@ -272,7 +437,152 @@ func status(ctx context.Context, args []string) error {
 		return writeJSON(os.Stdout, out)
 	}
 	fmt.Printf("workspace:   %s\ntarget:      %s\nexists:      %t\nrunning:     %t\nip:          %s\nrepo:        %s\nlast sync:   %s\n",
-		claim.ID, claim.Target, exists, running, ip, claim.RepoRoot, claim.LastSyncAt.Format(time.RFC3339))
+		workspace.ID, workspace.Target, exists, running, ip, workspace.RepoRoot, workspace.LastSyncAt.Format(time.RFC3339))
+	return nil
+}
+
+func view(ctx context.Context, args []string) error {
+	fs, opts := baseFlags("view", args)
+	noOpen := fs.Bool("no-open", false, "print the VNC URL without opening Screen Sharing")
+	reuseClient := fs.Bool("reuse-client", false, "reuse any existing Screen Sharing client instead of opening a fresh one")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *noOpen {
+		opts.VNC = true
+	}
+	target, workspace, b, store, err := setup(opts)
+	if err != nil {
+		return err
+	}
+	if err := b.Create(ctx, target, workspace); err != nil {
+		return err
+	}
+	if !b.IsRunning(ctx, workspace.VMName) {
+		if err := b.Start(ctx, target, workspace, backend.StartOptions{Headless: true}); err != nil {
+			return err
+		}
+	}
+	if _, err := b.IP(ctx, workspace, 120); err != nil {
+		return err
+	}
+	if err := ensureAutoLogin(ctx, target, workspace, b); err != nil {
+		return err
+	}
+	if b.IsRunning(ctx, workspace.VMName) {
+		if err := b.Stop(ctx, workspace); err != nil {
+			return err
+		}
+	}
+	if err := b.Start(ctx, target, workspace, backend.StartOptions{VNC: opts.VNC}); err != nil {
+		return err
+	}
+	ip, err := b.IP(ctx, workspace, 120)
+	if err != nil {
+		return err
+	}
+	if opts.VNC && *noOpen {
+		resetScreenSharingClient(ctx)
+	}
+	workspace.LastKnownIP = ip
+	if err := store.SaveWorkspace(workspace); err != nil {
+		return err
+	}
+	displayURL := vncURL(ip, target.Username, "")
+	openURL := displayURL
+	if target.Password != "" {
+		openURL = vncURL(ip, target.Username, target.Password)
+	}
+	out := map[string]any{
+		"workspace":     viewWorkspace(workspace),
+		"display":       viewDisplayName(opts.VNC),
+		"client":        viewClientName(opts.VNC, *noOpen),
+		"url":           displayURL,
+		"username":      target.Username,
+		"password_hint": target.Password,
+		"fresh_client":  opts.VNC && !*noOpen && !*reuseClient,
+		"opened":        !*noOpen,
+	}
+	if opts.VNC && !*noOpen {
+		if !*reuseClient {
+			resetScreenSharingClient(ctx)
+		}
+		if err := exec.CommandContext(ctx, "open", openURL).Start(); err != nil {
+			return fmt.Errorf("open Screen Sharing failed: %w", err)
+		}
+	}
+	if opts.JSON {
+		return writeJSON(os.Stdout, out)
+	}
+	fmt.Printf("workspace: %s\ndisplay:   %s\nclient:    %s\n", workspace.ID, viewDisplayName(opts.VNC), viewClientName(opts.VNC, *noOpen))
+	if opts.VNC {
+		fmt.Printf("url:       %s\nusername:  %s\npassword:  %s\n", displayURL, target.Username, target.Password)
+		if *noOpen {
+			fmt.Println("open:      skipped")
+		} else {
+			fmt.Println("open:      Screen Sharing launched")
+		}
+	} else {
+		fmt.Println("open:      Tart native window launched")
+	}
+	return nil
+}
+
+func viewDisplayName(vnc bool) string {
+	if vnc {
+		return "tart-vnc"
+	}
+	return "tart-native"
+}
+
+func viewClientName(vnc bool, noOpen bool) string {
+	if !vnc {
+		return "tart"
+	}
+	if noOpen {
+		return "none"
+	}
+	return "screen-sharing"
+}
+
+func resetScreenSharingClient(ctx context.Context) {
+	_ = exec.CommandContext(ctx, "osascript", "-e", `tell application "Screen Sharing" to quit`).Run()
+	time.Sleep(750 * time.Millisecond)
+	_ = exec.CommandContext(ctx, "pkill", "-x", "Screen Sharing").Run()
+	time.Sleep(500 * time.Millisecond)
+}
+
+func vncURL(host, username, password string) string {
+	value := neturl.URL{Scheme: "vnc", Host: host}
+	if username != "" && password != "" {
+		value.User = neturl.UserPassword(username, password)
+	} else if username != "" {
+		value.User = neturl.User(username)
+	}
+	return value.String()
+}
+
+func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) error {
+	if target.Username == "" || target.Password == "" {
+		return nil
+	}
+	expected := "Automatic login user: " + target.Username
+	script := strings.Join([]string{
+		"set -eu",
+		"if sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null; then exit 0; fi",
+		"printf '%s\\n' " + shellQuote(target.Password) + " | sudo -S sysadminctl -autologin set -userName " + shellQuote(target.Username) + " -password " + shellQuote(target.Password) + " -adminUser " + shellQuote(target.Username) + " -adminPassword " + shellQuote(target.Password) + " >/tmp/trybox-autologin.log 2>&1 || true",
+		"sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null",
+	}, "\n")
+	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", script}, backend.ExecOptions{
+		Stdout: io.Discard,
+		Stderr: os.Stderr,
+	})
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("macOS auto-login setup failed for %s; see /tmp/trybox-autologin.log in the guest", target.Username)
+	}
 	return nil
 }
 
@@ -281,11 +591,11 @@ func stop(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, claim, b, _, err := setup(opts)
+	_, workspace, b, _, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	return b.Stop(ctx, claim)
+	return b.Stop(ctx, workspace)
 }
 
 func destroy(ctx context.Context, args []string) error {
@@ -293,14 +603,14 @@ func destroy(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, claim, b, store, err := setup(opts)
+	_, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	if err := b.Destroy(ctx, claim); err != nil {
+	if err := b.Destroy(ctx, workspace); err != nil {
 		return err
 	}
-	return store.RemoveClaim(claim.ID)
+	return store.RemoveWorkspace(workspace.ID)
 }
 
 func syncWorkspace(ctx context.Context, args []string) error {
@@ -308,20 +618,21 @@ func syncWorkspace(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	target, claim, b, store, err := setup(opts)
+	target, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	if err := ensureVM(ctx, target, &claim, b, store, opts.Headless); err != nil {
+	if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
 		return err
 	}
-	result, err := syncClaim(ctx, target, &claim, b, store, nil)
+	result, err := syncWorkspaceState(ctx, target, &workspace, b, store, nil)
 	if err != nil {
 		return err
 	}
 	if opts.JSON {
 		return writeJSON(os.Stdout, result)
 	}
+	printWarnings(result.Warnings)
 	action := "synced"
 	if result.Skipped {
 		action = "sync skipped"
@@ -342,14 +653,11 @@ func runCommand(ctx context.Context, args []string) error {
 	if len(command) == 0 {
 		return fmt.Errorf("usage: trybox run [options] -- <command>")
 	}
-	target, claim, b, store, err := setup(opts)
+	target, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
-	if err := ensureVM(ctx, target, &claim, b, store, opts.Headless); err != nil {
-		return err
-	}
-	run, err := store.NewRun(claim, command)
+	run, err := store.NewRun(workspace, command)
 	if err != nil {
 		return err
 	}
@@ -357,29 +665,42 @@ func runCommand(ctx context.Context, args []string) error {
 	if err := store.SaveRun(run); err != nil {
 		return err
 	}
-	if _, err := syncClaim(ctx, target, &claim, b, store, &run); err != nil {
+	_ = store.AppendEvent(run, "workspace_ensure_started", nil)
+	if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
 		run.EndedAt = time.Now().UTC()
 		run.ExitCode = -1
-		_ = store.AppendEvent(run, "run_failed", map[string]any{"error": err.Error()})
+		_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "workspace_ensure", "error": err.Error()})
+		_ = store.SaveRun(run)
+		return err
+	}
+	_ = store.AppendEvent(run, "workspace_ensure_finished", map[string]any{"vm_name": workspace.VMName, "ip": workspace.LastKnownIP})
+	if _, err := syncWorkspaceState(ctx, target, &workspace, b, store, &run); err != nil {
+		run.EndedAt = time.Now().UTC()
+		run.ExitCode = -1
+		_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "sync", "error": err.Error()})
 		_ = store.SaveRun(run)
 		return err
 	}
 
-	stdout, err := os.Create(run.StdoutLog)
+	stdout, err := os.OpenFile(run.StdoutLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer stdout.Close()
-	stderr, err := os.Create(run.StderrLog)
+	stderr, err := os.OpenFile(run.StderrLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer stderr.Close()
 
 	_ = store.AppendEvent(run, "command_started", map[string]any{"command": command})
-	exitCode, execErr := b.Exec(ctx, target, claim, command, backend.ExecOptions{
+	commandStdout := io.Writer(stdout)
+	if !opts.JSON {
+		commandStdout = io.MultiWriter(os.Stdout, stdout)
+	}
+	exitCode, execErr := b.Exec(ctx, target, workspace, command, backend.ExecOptions{
 		Workdir: remoteWorkPath(target),
-		Stdout:  io.MultiWriter(os.Stdout, stdout),
+		Stdout:  commandStdout,
 		Stderr:  io.MultiWriter(os.Stderr, stderr),
 	})
 	run.EndedAt = time.Now().UTC()
@@ -388,8 +709,8 @@ func runCommand(ctx context.Context, args []string) error {
 	if err := store.SaveRun(run); err != nil {
 		return err
 	}
-	claim.LastRunLog = store.RunDir(run.ID)
-	_ = store.SaveClaim(claim)
+	workspace.LastRunLog = store.RunDir(run.ID)
+	_ = store.SaveWorkspace(workspace)
 	if opts.JSON {
 		_ = writeJSON(os.Stdout, viewRun(run))
 	}
@@ -431,26 +752,32 @@ func logs(ctx context.Context, args []string) error {
 }
 
 func events(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("events", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	jsonOut := fs.Bool("json", false, "emit JSON array")
-	if err := fs.Parse(args); err != nil {
-		return err
+	jsonOut := false
+	runID := ""
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOut = true
+		default:
+			if strings.HasPrefix(arg, "-") || runID != "" {
+				return fmt.Errorf("usage: trybox events <run-id> [--json]")
+			}
+			runID = arg
+		}
 	}
-	rest := fs.Args()
-	if len(rest) != 1 {
+	if runID == "" {
 		return fmt.Errorf("usage: trybox events <run-id> [--json]")
 	}
 	store, err := state.DefaultStore()
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(store.RunDir(rest[0]), "events.ndjson")
+	path := filepath.Join(store.RunDir(runID), "events.ndjson")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	if !*jsonOut {
+	if !jsonOut {
 		_, err = os.Stdout.Write(data)
 		_ = ctx
 		return err
@@ -530,7 +857,11 @@ func syncPlan(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	repo, err := resolveRepo(opts.Repo)
+	_, config, err := loadStoreConfig()
+	if err != nil {
+		return err
+	}
+	repo, err := resolveRepo(opts.Repo, config)
 	if err != nil {
 		return err
 	}
@@ -543,6 +874,7 @@ func syncPlan(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("repo: %s\nfiles: %d\nbytes: %s\nchanged tracked files: %d\nuntracked files: %d\nfingerprint: %s\n",
 		repo, plan.FileCount, humanBytes(plan.TotalBytes), len(plan.ChangedTracked), len(plan.Untracked), plan.Fingerprint)
+	printWarnings(plan.Warnings)
 	if len(plan.LargestFiles) > 0 {
 		fmt.Println("largest files:")
 		for _, file := range plan.LargestFiles {
@@ -558,65 +890,56 @@ func syncPlan(ctx context.Context, args []string) error {
 	return nil
 }
 
-func setup(opts *options) (targets.Target, state.Claim, backend.Backend, state.Store, error) {
-	target, err := targets.Get(opts.Target)
+func setup(opts *options) (targets.Target, state.Workspace, backend.Backend, state.Store, error) {
+	store, config, err := loadStoreConfig()
 	if err != nil {
-		return targets.Target{}, state.Claim{}, nil, state.Store{}, err
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	repo, err := resolveRepo(opts.Repo)
+	target, err := targets.Get(targetNameFor(opts, config))
 	if err != nil {
-		return targets.Target{}, state.Claim{}, nil, state.Store{}, err
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	store, err := state.DefaultStore()
+	repo, err := resolveRepo(opts.Repo, config)
 	if err != nil {
-		return targets.Target{}, state.Claim{}, nil, state.Store{}, err
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	if err := store.Init(); err != nil {
-		return targets.Target{}, state.Claim{}, nil, state.Store{}, err
-	}
-	claimID := state.ClaimID(target.Name, repo)
-	claim, err := store.LoadClaim(claimID)
+	workspace, err := loadOrCreateWorkspace(store, target, repo)
 	if err != nil {
-		claim = state.Claim{
-			ID:        claimID,
-			Target:    target.Name,
-			Backend:   target.Backend,
-			VMName:    target.VMName,
-			RepoRoot:  repo,
-			CreatedAt: time.Now().UTC(),
-		}
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
+	applyResourceOverrides(&workspace, target, opts)
 	b := backendFor(target)
-	return target, claim, b, store, nil
+	return target, workspace, b, store, nil
 }
 
-func ensureVM(ctx context.Context, target targets.Target, claim *state.Claim, b backend.Backend, store state.Store, headless bool) error {
-	if err := b.Create(ctx, target, *claim); err != nil {
+func ensureVM(ctx context.Context, target targets.Target, workspace *state.Workspace, b backend.Backend, store state.Store, opts *options) error {
+	if err := b.Create(ctx, target, *workspace); err != nil {
 		return err
 	}
-	if err := b.Start(ctx, target, *claim, backend.StartOptions{Headless: headless}); err != nil {
+	if err := b.Start(ctx, target, *workspace, backend.StartOptions{Headless: opts.Headless, VNC: opts.VNC}); err != nil {
 		return err
 	}
-	ip, err := b.IP(ctx, *claim, 120)
+	ip, err := b.IP(ctx, *workspace, 120)
 	if err != nil {
 		return err
 	}
-	claim.LastKnownIP = ip
-	return store.SaveClaim(*claim)
+	workspace.LastKnownIP = ip
+	return store.SaveWorkspace(*workspace)
 }
 
-func syncClaim(ctx context.Context, target targets.Target, claim *state.Claim, b backend.Backend, store state.Store, run *state.Run) (syncResult, error) {
+func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run) (syncResult, error) {
 	start := time.Now()
-	plan, err := workspace.BuildPlan(ctx, claim.RepoRoot, 10)
+	plan, err := workspace.BuildPlan(ctx, workspaceState.RepoRoot, 10)
 	if err != nil {
 		return syncResult{}, err
 	}
 	result := syncResult{
-		RepoRoot:    claim.RepoRoot,
+		RepoRoot:    workspaceState.RepoRoot,
 		RemotePath:  remoteWorkPath(target),
 		Fingerprint: plan.Fingerprint,
 		FileCount:   plan.FileCount,
 		TotalBytes:  plan.TotalBytes,
+		Warnings:    plan.Warnings,
 	}
 	if run != nil {
 		_ = store.AppendEvent(*run, "sync_started", map[string]any{
@@ -630,17 +953,17 @@ func syncClaim(ctx context.Context, target targets.Target, claim *state.Claim, b
 		})
 	}
 
-	if _, err := ensureSSHKey(ctx, target, *claim, b, store); err != nil {
+	if _, err := ensureSSHKey(ctx, target, *workspaceState, b, store); err != nil {
 		return result, err
 	}
-	if matches, err := remoteFingerprintMatches(ctx, target, *claim, b, plan.Fingerprint); err != nil {
+	if matches, err := remoteFingerprintMatches(ctx, target, *workspaceState, b, plan.Fingerprint); err != nil {
 		return result, err
 	} else if matches {
 		result.Skipped = true
 		result.Duration = time.Since(start).Round(time.Millisecond).String()
-		claim.SyncFingerprint = plan.Fingerprint
-		claim.LastSyncAt = time.Now().UTC()
-		if err := store.SaveClaim(*claim); err != nil {
+		workspaceState.SyncFingerprint = plan.Fingerprint
+		workspaceState.LastSyncAt = time.Now().UTC()
+		if err := store.SaveWorkspace(*workspaceState); err != nil {
 			return result, err
 		}
 		if run != nil {
@@ -663,15 +986,15 @@ func syncClaim(ctx context.Context, target targets.Target, claim *state.Claim, b
 		return result, err
 	}
 
-	keyPath := filepath.Join(store.KeyDir(claim.ID), "id_ed25519")
-	ip, err := b.IP(ctx, *claim, 120)
+	keyPath := filepath.Join(store.KeyDir(workspaceState.ID), "id_ed25519")
+	ip, err := b.IP(ctx, *workspaceState, 120)
 	if err != nil {
 		return result, err
 	}
 	sshCmd := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR", shellQuote(keyPath))
 	remote := fmt.Sprintf("%s@%s:%s/", target.Username, ip, remoteWorkPath(target))
 	cmd := exec.CommandContext(ctx, "rsync",
-		"-az",
+		"-a",
 		"--from0",
 		"--files-from", manifestPath,
 		"--relative",
@@ -679,19 +1002,19 @@ func syncClaim(ctx context.Context, target targets.Target, claim *state.Claim, b
 		"./",
 		remote,
 	)
-	cmd.Dir = claim.RepoRoot
+	cmd.Dir = workspaceState.RepoRoot
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return result, fmt.Errorf("rsync failed: %w", err)
 	}
-	if err := writeRemoteFingerprint(ctx, target, *claim, b, plan.Fingerprint); err != nil {
+	if err := writeRemoteFingerprint(ctx, target, *workspaceState, b, plan.Fingerprint); err != nil {
 		return result, err
 	}
 	result.Duration = time.Since(start).Round(time.Millisecond).String()
-	claim.SyncFingerprint = plan.Fingerprint
-	claim.LastSyncAt = time.Now().UTC()
-	if err := store.SaveClaim(*claim); err != nil {
+	workspaceState.SyncFingerprint = plan.Fingerprint
+	workspaceState.LastSyncAt = time.Now().UTC()
+	if err := store.SaveWorkspace(*workspaceState); err != nil {
 		return result, err
 	}
 	if run != nil {
@@ -700,14 +1023,14 @@ func syncClaim(ctx context.Context, target targets.Target, claim *state.Claim, b
 	return result, nil
 }
 
-func ensureSSHKey(ctx context.Context, target targets.Target, claim state.Claim, b backend.Backend, store state.Store) (string, error) {
-	keyDir := store.KeyDir(claim.ID)
+func ensureSSHKey(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend, store state.Store) (string, error) {
+	keyDir := store.KeyDir(workspace.ID)
 	keyPath := filepath.Join(keyDir, "id_ed25519")
 	if err := os.MkdirAll(keyDir, 0o700); err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(keyPath); errors.Is(err, os.ErrNotExist) {
-		cmd := exec.CommandContext(ctx, "ssh-keygen", "-t", "ed25519", "-N", "", "-f", keyPath, "-C", "trybox-"+claim.ID)
+		cmd := exec.CommandContext(ctx, "ssh-keygen", "-t", "ed25519", "-N", "", "-f", keyPath, "-C", "trybox-"+workspace.ID)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("ssh-keygen failed: %w%s", err, suffix(strings.TrimSpace(string(out))))
@@ -726,7 +1049,7 @@ func ensureSSHKey(ctx context.Context, target targets.Target, claim state.Claim,
 		"(grep -qxF " + shellQuote(pubLine) + " ~/.ssh/authorized_keys || printf '%s\\n' " + shellQuote(pubLine) + " >> ~/.ssh/authorized_keys)",
 		"chmod 600 ~/.ssh/authorized_keys",
 	}, " && ")
-	exitCode, err := b.Exec(ctx, target, claim, []string{"sh", "-lc", install}, backend.ExecOptions{
+	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", install}, backend.ExecOptions{
 		Stdout: io.Discard,
 		Stderr: os.Stderr,
 	})
@@ -739,9 +1062,9 @@ func ensureSSHKey(ctx context.Context, target targets.Target, claim state.Claim,
 	return keyPath, nil
 }
 
-func remoteFingerprintMatches(ctx context.Context, target targets.Target, claim state.Claim, b backend.Backend, fingerprint string) (bool, error) {
+func remoteFingerprintMatches(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend, fingerprint string) (bool, error) {
 	check := "test \"$(cat " + shellQuote(remoteFingerprintPath(target)) + " 2>/dev/null)\" = " + shellQuote(fingerprint)
-	exitCode, err := b.Exec(ctx, target, claim, []string{"sh", "-lc", check}, backend.ExecOptions{
+	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", check}, backend.ExecOptions{
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	})
@@ -751,9 +1074,9 @@ func remoteFingerprintMatches(ctx context.Context, target targets.Target, claim 
 	return exitCode == 0, nil
 }
 
-func writeRemoteFingerprint(ctx context.Context, target targets.Target, claim state.Claim, b backend.Backend, fingerprint string) error {
+func writeRemoteFingerprint(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend, fingerprint string) error {
 	cmd := "mkdir -p " + shellQuote(filepath.Dir(remoteFingerprintPath(target))) + " && printf '%s\\n' " + shellQuote(fingerprint) + " > " + shellQuote(remoteFingerprintPath(target))
-	exitCode, err := b.Exec(ctx, target, claim, []string{"sh", "-lc", cmd}, backend.ExecOptions{
+	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", cmd}, backend.ExecOptions{
 		Stdout: io.Discard,
 		Stderr: os.Stderr,
 	})
@@ -770,7 +1093,7 @@ func remoteWorkPath(target targets.Target) string {
 	if target.GuestWorkPath != "" {
 		return target.GuestWorkPath
 	}
-	return filepath.Join("/Users", target.Username, "trybox", "work", "firefox")
+	return filepath.Join("/Users", target.Username, "trybox")
 }
 
 func remoteFingerprintPath(target targets.Target) string {
@@ -788,33 +1111,37 @@ func viewTarget(target targets.Target) targetView {
 	}
 }
 
-func viewClaim(claim state.Claim) claimView {
-	return claimView{
-		ID:              claim.ID,
-		Target:          claim.Target,
-		RepoRoot:        claim.RepoRoot,
-		CreatedAt:       claim.CreatedAt,
-		UpdatedAt:       claim.UpdatedAt,
-		LastRunLog:      claim.LastRunLog,
-		LastKnownIP:     claim.LastKnownIP,
-		SyncFingerprint: claim.SyncFingerprint,
-		LastSyncAt:      claim.LastSyncAt,
+func viewWorkspace(workspace state.Workspace) workspaceView {
+	return workspaceView{
+		ID:              workspace.ID,
+		Target:          workspace.Target,
+		RepoRoot:        workspace.RepoRoot,
+		VMName:          workspace.VMName,
+		CPU:             workspace.CPU,
+		MemoryMB:        workspace.MemoryMB,
+		DiskGB:          workspace.DiskGB,
+		CreatedAt:       workspace.CreatedAt,
+		UpdatedAt:       workspace.UpdatedAt,
+		LastRunLog:      workspace.LastRunLog,
+		LastKnownIP:     workspace.LastKnownIP,
+		SyncFingerprint: workspace.SyncFingerprint,
+		LastSyncAt:      workspace.LastSyncAt,
 	}
 }
 
 func viewRun(run state.Run) runView {
 	return runView{
-		ID:        run.ID,
-		ClaimID:   run.ClaimID,
-		Target:    run.Target,
-		RepoRoot:  run.RepoRoot,
-		Command:   run.Command,
-		StartedAt: run.StartedAt,
-		EndedAt:   run.EndedAt,
-		ExitCode:  run.ExitCode,
-		StdoutLog: run.StdoutLog,
-		StderrLog: run.StderrLog,
-		EventsLog: run.EventsLog,
+		ID:          run.ID,
+		WorkspaceID: run.WorkspaceID,
+		Target:      run.Target,
+		RepoRoot:    run.RepoRoot,
+		Command:     run.Command,
+		StartedAt:   run.StartedAt,
+		EndedAt:     run.EndedAt,
+		ExitCode:    run.ExitCode,
+		StdoutLog:   run.StdoutLog,
+		StderrLog:   run.StderrLog,
+		EventsLog:   run.EventsLog,
 	}
 }
 
@@ -830,23 +1157,108 @@ func backendFor(target targets.Target) backend.Backend {
 	}
 }
 
-func resolveRepo(repo string) (string, error) {
-	if repo != "" {
-		return filepath.Abs(repo)
+func loadStoreConfig() (state.Store, state.Config, error) {
+	store, err := state.DefaultStore()
+	if err != nil {
+		return state.Store{}, state.Config{}, err
 	}
+	if err := store.Init(); err != nil {
+		return state.Store{}, state.Config{}, err
+	}
+	config, err := store.LoadConfig()
+	if err != nil {
+		return state.Store{}, state.Config{}, err
+	}
+	return store, config, nil
+}
+
+func targetNameFor(opts *options, config state.Config) string {
+	if opts != nil && opts.TargetSet {
+		return opts.Target
+	}
+	if config.DefaultTarget != "" {
+		return config.DefaultTarget
+	}
+	return "macos15-arm64"
+}
+
+func loadOrCreateWorkspace(store state.Store, target targets.Target, repo string) (state.Workspace, error) {
+	workspaceID := state.WorkspaceID(target.Name, repo)
+	workspace, err := store.LoadWorkspace(workspaceID)
+	if err == nil {
+		return workspace, nil
+	}
+	return state.Workspace{
+		SchemaVersion: 1,
+		ID:            workspaceID,
+		Target:        target.Name,
+		Backend:       target.Backend,
+		VMName:        state.WorkspaceVMName(workspaceID),
+		RepoRoot:      repo,
+		RepoRootHash:  state.RepoRootHash(repo),
+		CPU:           target.CPU,
+		MemoryMB:      target.MemoryMB,
+		DiskGB:        target.DiskGB,
+		CreatedAt:     time.Now().UTC(),
+	}, nil
+}
+
+func applyResourceOverrides(workspace *state.Workspace, target targets.Target, opts *options) {
+	if opts.CPU > 0 {
+		workspace.CPU = opts.CPU
+	}
+	if opts.MemoryMB > 0 {
+		workspace.MemoryMB = opts.MemoryMB
+	}
+	if opts.DiskGB > 0 {
+		workspace.DiskGB = opts.DiskGB
+	}
+	if workspace.CPU == 0 {
+		workspace.CPU = target.CPU
+	}
+	if workspace.MemoryMB == 0 {
+		workspace.MemoryMB = target.MemoryMB
+	}
+	if workspace.DiskGB == 0 {
+		workspace.DiskGB = target.DiskGB
+	}
+}
+
+func resolveRepo(repo string, config state.Config) (string, error) {
+	if repo != "" {
+		return canonicalPath(repo)
+	}
+	if config.DefaultRepoRoot != "" {
+		return canonicalPath(config.DefaultRepoRoot)
+	}
+	return resolveGitRepo()
+}
+
+func resolveRepoForUse(repo string) (string, error) {
+	if repo != "" {
+		return canonicalPath(repo)
+	}
+	return resolveGitRepo()
+}
+
+func resolveGitRepo() (string, error) {
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err == nil {
-		return strings.TrimSpace(string(out)), nil
+		return canonicalPath(strings.TrimSpace(string(out)))
 	}
-	home, err := os.UserHomeDir()
+	return "", fmt.Errorf("could not detect repo root; pass --repo or run trybox workspace use <repo>")
+}
+
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
 	}
-	defaultRepo := filepath.Join(home, "firefox")
-	if _, statErr := os.Stat(defaultRepo); statErr == nil {
-		return defaultRepo, nil
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs, nil
 	}
-	return "", fmt.Errorf("could not detect repo root; pass --repo")
+	return resolved, nil
 }
 
 func writeJSON(w io.Writer, value any) error {
@@ -868,6 +1280,12 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
+func printWarnings(warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
+}
+
 func shellQuote(s string) string {
 	if s == "" {
 		return "''"
@@ -883,15 +1301,19 @@ func suffix(detail string) string {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `trybox: clean local Firefox debugging workspaces
+	fmt.Fprint(w, `trybox: clean local Mozilla product debugging workspaces
 
 Usage:
   trybox doctor [--json]
   trybox target list [--json]
-  trybox up [--target name] [--repo path]
+  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
+  trybox workspace show [--json]
+  trybox workspace clear
+  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n]
   trybox sync [--target name] [--repo path] [--json]
-  trybox run [--target name] [--repo path] -- <command>
+  trybox run [--target name] [--repo path] [--json] -- <command>
   trybox status [--target name] [--repo path] [--json]
+  trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
   trybox history [--limit n] [--json]
   trybox logs <run-id>
   trybox events <run-id> [--json]
@@ -900,6 +1322,6 @@ Usage:
   trybox destroy [--target name] [--repo path]
 
 MVP backend:
-  macOS 15 arm64 via Tart. No production provisioning, no CI credentials, no CI registration.
+  macOS targets via Tart.
 `)
 }

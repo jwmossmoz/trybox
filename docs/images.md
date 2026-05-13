@@ -2,7 +2,7 @@
 
 Trybox should own the image path eventually. Public Tart images are useful as a
 bootstrap seed, but they are not enough as the long-term foundation for
-repeatable Firefox debugging.
+repeatable Mozilla product debugging.
 
 ## Terms
 
@@ -51,10 +51,11 @@ The command should:
 4. Start the target image and verify SSH.
 5. Install Trybox's local SSH key.
 6. Create the guest work directory.
-7. Record image metadata for `doctor`, `up`, and agents.
+7. Enable desktop auto-login for the Trybox guest user so `trybox view` opens
+   directly into a usable desktop.
+8. Record image metadata for `doctor`, `up`, and agents.
 
-It should not expose Tart details in the normal `up/sync/run` workflow, register
-with CI, run production provisioning, or require CI credentials.
+It should keep Tart details out of the normal `up/sync/run` workflow.
 
 ## Phases
 

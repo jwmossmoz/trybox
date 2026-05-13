@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ type Plan struct {
 	Fingerprint     string   `json:"fingerprint"`
 	ChangedTracked  []string `json:"changed_tracked"`
 	Untracked       []string `json:"untracked"`
+	Warnings        []string `json:"warnings,omitempty"`
 	LargestFiles    []File   `json:"largest_files"`
 	LargestDirs     []File   `json:"largest_dirs"`
 	Excluded        []string `json:"excluded"`
@@ -55,25 +57,23 @@ func BuildPlan(ctx context.Context, repo string, limit int) (Plan, error) {
 	files := make([]File, 0, len(paths))
 	excluded := []string{}
 	for _, rel := range paths {
-		rel = filepath.ToSlash(filepath.Clean(rel))
-		if rel == "." || rel == "" {
-			continue
-		}
-		if isExcluded(rel, excludes) {
-			excluded = append(excluded, rel)
-			continue
-		}
-		info, err := os.Lstat(filepath.Join(repo, filepath.FromSlash(rel)))
+		file, skipped, err := planFile(repo, rel, excludes)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
 			return Plan{}, err
 		}
-		if info.IsDir() {
+		if skipped != "" {
+			excluded = append(excluded, skipped)
 			continue
 		}
-		files = append(files, File{Path: rel, Size: info.Size(), ModTimeUnixNano: info.ModTime().UnixNano()})
+		files = append(files, file)
+	}
+	for _, metadataDir := range []string{".git", ".hg"} {
+		metadataFiles, metadataExcluded, err := metadataFiles(repo, metadataDir, excludes)
+		if err != nil {
+			return Plan{}, err
+		}
+		files = append(files, metadataFiles...)
+		excluded = append(excluded, metadataExcluded...)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Path < files[j].Path
@@ -90,6 +90,7 @@ func BuildPlan(ctx context.Context, repo string, limit int) (Plan, error) {
 	for _, file := range files {
 		plan.TotalBytes += file.Size
 	}
+	plan.Warnings = warnings(plan.TotalBytes)
 	plan.Fingerprint = fingerprint(files)
 	plan.LargestFiles = largestFiles(files, limit)
 	plan.LargestDirs = largestDirs(files, limit)
@@ -133,8 +134,6 @@ func gitNUL(ctx context.Context, repo string, args ...string) ([]string, error) 
 
 func loadExcludes(repo string) ([]string, error) {
 	excludes := []string{
-		".git/",
-		".hg/",
 		".trybox/",
 		"node_modules/",
 		"playwright-report/",
@@ -155,6 +154,92 @@ func loadExcludes(repo string) ([]string, error) {
 		excludes = append(excludes, filepath.ToSlash(line))
 	}
 	return excludes, nil
+}
+
+func metadataFiles(repo, relRoot string, excludes []string) ([]File, []string, error) {
+	root := filepath.Join(repo, relRoot)
+	info, err := os.Lstat(root)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		file, skipped, err := planFile(repo, relRoot, excludes)
+		if err != nil || skipped != "" {
+			return nil, nonEmpty(skipped), err
+		}
+		return []File{file}, nil, nil
+	}
+
+	files := []File{}
+	excluded := []string{}
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(repo, path)
+		if err != nil {
+			return err
+		}
+		file, skipped, err := planFile(repo, rel, excludes)
+		if err != nil {
+			return err
+		}
+		if skipped != "" {
+			excluded = append(excluded, skipped)
+			return nil
+		}
+		files = append(files, file)
+		return nil
+	})
+	return files, excluded, err
+}
+
+func planFile(repo, rel string, excludes []string) (File, string, error) {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || rel == "" {
+		return File{}, rel, nil
+	}
+	if isExcluded(rel, excludes) {
+		return File{}, rel, nil
+	}
+	info, err := os.Lstat(filepath.Join(repo, filepath.FromSlash(rel)))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return File{}, rel, nil
+		}
+		return File{}, "", err
+	}
+	if info.IsDir() {
+		return File{}, rel, nil
+	}
+	mode := info.Mode()
+	if !mode.IsRegular() && mode&os.ModeSymlink == 0 {
+		return File{}, rel, nil
+	}
+	return File{Path: rel, Size: info.Size(), ModTimeUnixNano: info.ModTime().UnixNano()}, "", nil
+}
+
+func warnings(totalBytes int64) []string {
+	const largeSyncThreshold = 10 * 1024 * 1024 * 1024
+	if totalBytes <= largeSyncThreshold {
+		return nil
+	}
+	return []string{
+		fmt.Sprintf("planned sync is %.1f GiB; first sync may take several minutes", float64(totalBytes)/(1024*1024*1024)),
+	}
+}
+
+func nonEmpty(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return []string{value}
 }
 
 func isExcluded(path string, excludes []string) bool {

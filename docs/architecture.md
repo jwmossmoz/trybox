@@ -1,6 +1,6 @@
 # Trybox Architecture
 
-Trybox is a local execution control plane for clean Firefox development
+Trybox is a local execution control plane for clean Mozilla product development
 workspaces. The first backend is Tart, but the product model is not "a Tart
 wrapper." The public nouns are:
 
@@ -39,8 +39,6 @@ trybox CLI
   command sandbox interface
     none
     future bwrap/nsjail
-  task adapters
-    future taskcluster/treeherder/task-debugger import
 ```
 
 ## Current Implementation Diagram
@@ -58,8 +56,8 @@ flowchart TD
     lifecycle --> backend
     backend --> vm["Clean local macOS VM"]
 
-    sync --> checkout["Host Firefox checkout"]
-    checkout --> workspace["Guest workspace<br/>~/trybox/work/firefox"]
+    sync --> checkout["Host source checkout"]
+    checkout --> workspace["Guest workspace<br/>~/trybox"]
     vm --> workspace
     run --> workspace
 
@@ -69,12 +67,12 @@ flowchart TD
 
 ## State
 
-State lives under the user config directory:
+State lives under `~/.trybox`:
 
 ```text
-~/Library/Application Support/trybox/
-  claims/
-    claim_*.json
+~/.trybox/
+  workspaces/
+    workspace_*.json
   runs/
     run_*/
       meta.json
@@ -83,6 +81,9 @@ State lives under the user config directory:
       events.ndjson
   logs/
     <vm>.log
+  keys/
+    workspace_*/
+      id_ed25519
 ```
 
 Run logs are intentionally plain files so agents can recover after interruption.
@@ -109,12 +110,12 @@ Tart is currently invoked through `os/exec`. Native Apple
 Virtualization.Framework should only be considered if Tart blocks a critical
 workflow.
 
-## CI Machine References
+## Target References
 
-Trybox targets are local OS and architecture shapes. They can be informed by the broad
-behavior Firefox runs in CI, but they should not expose production pooling
-concepts, require production image repositories, run production provisioning, or
-require access to CI secrets.
+Trybox targets are local OS and architecture shapes. They can be chosen to
+match the Mozilla product behavior a developer needs to reproduce, but the
+normal workflow should stay target/workspace/run based instead of exposing
+backend image details.
 
 The first implementation expects a Trybox macOS target image with SSH enabled.
 Creating that target image is part of the Trybox setup story, not something
@@ -125,46 +126,22 @@ model.
 
 ## Large Repository Strategy
 
-The MVP syncs the Git-managed working set into the guest:
+The MVP syncs the Git-managed working set and repository metadata into the
+guest:
 
 ```text
-host ~/firefox -> guest ~/trybox/work/firefox
+host <mozilla source checkout> -> guest ~/trybox
 ```
 
-The intended large-repo sync path is:
+The intended large-repo sync path is intentionally simple:
 
-1. Keep a seeded clean Firefox checkout inside the VM or attached workspace
-   disk.
-2. Apply local commits and dirty tracked changes as a patch overlay.
-3. Copy nonignored untracked files explicitly.
-4. Fall back to manifest-based rsync when patch overlay is not possible.
+1. Copy tracked files, nonignored untracked files, and VCS metadata into the
+   guest with native `rsync`.
+2. Keep `~/trybox` as a real checkout so repo-local tools can inspect Git or
+   Mercurial state.
+3. Warn on very large transfers instead of inventing a more complex source
+   overlay too early.
 
 `trybox sync-plan --json` previews the manifest. `trybox sync --json` performs
 the current rsync path and records a fingerprint so unchanged worktrees can
 skip repeated transfers.
-
-## Task-Aware Future
-
-Trybox should consume CI task context, not become CI infrastructure.
-
-Future commands:
-
-```sh
-trybox task import <task-id-or-treeherder-url>
-trybox task plan <task-id>
-trybox task run <task-id>
-```
-
-The task import layer should extract task label, command, environment,
-artifacts, platform hints, and revision. The plan must be visible before
-execution because CI payloads are not automatically safe to run locally.
-
-The moved `task-debugger` skill is useful reference material:
-
-```text
-https://github.com/ahal/chezmoi/blob/main/dot_claude/skills/task-debugger/SKILL.md
-```
-
-It is complementary to Trybox: task-debugger discovers and understands failing
-tasks; Trybox provides a clean local execution boundary for native macOS and
-future Windows reproduction.

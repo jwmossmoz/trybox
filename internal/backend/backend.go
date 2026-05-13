@@ -11,6 +11,7 @@ import (
 type StartOptions struct {
 	RepoRoot string
 	Headless bool
+	VNC      bool
 }
 
 type ExecOptions struct {
@@ -24,12 +25,12 @@ type Backend interface {
 	Doctor(ctx context.Context, target targets.Target) []Check
 	Exists(ctx context.Context, vmName string) bool
 	IsRunning(ctx context.Context, vmName string) bool
-	Create(ctx context.Context, target targets.Target, claim state.Claim) error
-	Start(ctx context.Context, target targets.Target, claim state.Claim, opts StartOptions) error
-	Stop(ctx context.Context, claim state.Claim) error
-	Destroy(ctx context.Context, claim state.Claim) error
-	IP(ctx context.Context, claim state.Claim, waitSeconds int) (string, error)
-	Exec(ctx context.Context, target targets.Target, claim state.Claim, command []string, opts ExecOptions) (int, error)
+	Create(ctx context.Context, target targets.Target, workspace state.Workspace) error
+	Start(ctx context.Context, target targets.Target, workspace state.Workspace, opts StartOptions) error
+	Stop(ctx context.Context, workspace state.Workspace) error
+	Destroy(ctx context.Context, workspace state.Workspace) error
+	IP(ctx context.Context, workspace state.Workspace, waitSeconds int) (string, error)
+	Exec(ctx context.Context, target targets.Target, workspace state.Workspace, command []string, opts ExecOptions) (int, error)
 }
 
 type Check struct {

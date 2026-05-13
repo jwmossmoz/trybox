@@ -1,16 +1,14 @@
 # Trybox
 
-Trybox creates clean local debugging workspaces for Firefox development.
+Trybox creates clean local debugging workspaces for Mozilla product
+development.
+
+The name is a nod to Mozilla's "try" workflow: a local box for trying source
+changes before sending work elsewhere.
 
 The first backend is Tart on Apple Silicon macOS. It starts a clean macOS VM
-target, syncs the local Firefox checkout, runs commands inside the guest, and
-stores durable logs for humans and agents. It intentionally does not run
-production provisioning, inject CI credentials, or register with CI.
-
-## Status
-
-First cut. This is a private working repo while the macOS workflow is being
-debugged.
+target, syncs a selected local source checkout, runs commands inside the guest,
+and stores durable logs for humans and agents.
 
 ## Quick Start
 
@@ -19,17 +17,32 @@ Prerequisites:
 - Apple Silicon macOS host
 - Tart installed
 - A Trybox macOS target image with SSH enabled
-- A Firefox checkout, defaulting to `~/firefox`
+- A Mozilla source checkout, selected with `trybox workspace use` or passed
+  with `--repo`
+
+The examples below use `~/mozilla-unified`; pass another checkout path, such as
+`~/comm-central`, when working on a different product.
 
 ```sh
 go run ./cmd/trybox doctor
 go run ./cmd/trybox target list
-go run ./cmd/trybox up --repo ~/firefox
-go run ./cmd/trybox sync --repo ~/firefox
-go run ./cmd/trybox run --repo ~/firefox -- ./mach --version
+go run ./cmd/trybox workspace use ~/mozilla-unified
+go run ./cmd/trybox up
+go run ./cmd/trybox sync
+go run ./cmd/trybox run -- ./mach --version
+go run ./cmd/trybox view
 go run ./cmd/trybox logs run_YYYYMMDDTHHMMSS
 go run ./cmd/trybox stop
 ```
+
+`trybox view` verifies desktop auto-login and restarts the workspace VM with the
+native Tart display window. Use `trybox view --vnc` only when you specifically
+want macOS Screen Sharing. Early Tart-seeded images use `admin` / `admin`;
+`trybox bootstrap` should eventually bake a Trybox-owned guest user into target
+images so visual smoke tests never stop at the login window.
+
+`trybox view --vnc --no-open` starts Tart's VNC mode and prints the connection
+details without launching Apple's Screen Sharing client.
 
 Build a local binary:
 
@@ -48,8 +61,8 @@ Built-in targets:
 - `macos15-arm64` / `macos15-x64-rosetta`
 - `macos26-arm64` / `macos26-x64-rosetta`
 
-These targets are local OS and architecture shapes. They do not expose production
-pooling concepts, create pools, or talk to Taskcluster.
+These targets are local OS and architecture shapes. They do not expose
+backend image details in the normal workspace workflow.
 
 ## Target Images
 
@@ -74,10 +87,14 @@ trybox bootstrap --target macos15-arm64
 ```sh
 trybox doctor [--json]
 trybox target list [--json]
+trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
+trybox workspace show [--json]
+trybox workspace clear
 trybox up [--target name] [--repo path]
 trybox sync [--target name] [--repo path] [--json]
 trybox status [--target name] [--repo path] [--json]
 trybox run [--target name] [--repo path] -- <command>
+trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
 trybox history [--limit n] [--json]
 trybox logs <run-id>
 trybox events <run-id> [--json]
@@ -88,21 +105,14 @@ trybox destroy [--target name] [--repo path]
 
 ## Design Goals
 
-- Use clean, disposable OS workspaces for debugging real Firefox failures.
+- Use clean, disposable OS workspaces for debugging real Mozilla product
+  failures.
 - Keep the public model target/workspace/run based, not backend based.
 - Make every long-running command resumable through durable logs.
 - Keep agent-facing output machine-readable with `--json`.
-- Sync tracked and nonignored local source into the guest so dirty Firefox
-  worktrees can be tested without making agents manage VM internals.
-- Keep future task import as metadata and planning first, execution second.
-
-## Non-Goals
-
-- No production provisioning in local repro VMs.
-- No CI registration or pool management.
-- No secrets forwarding by default.
-- No full reimplementation of Tart or Apple Virtualization.Framework in the
-  first phase.
+- Sync tracked files, repository metadata, and nonignored local source into the
+  guest so dirty Mozilla worktrees can be tested without making agents manage
+  VM internals.
 
 See [docs/architecture.md](docs/architecture.md) and
 [docs/security.md](docs/security.md). Image ownership and bootstrap strategy

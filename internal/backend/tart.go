@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jwmossmoz/trybox/internal/sshx"
@@ -39,7 +40,7 @@ func (t Tart) Doctor(ctx context.Context, target targets.Target) []Check {
 	if runtimeArch() == "arm64" {
 		checks = append(checks, Check{Name: "host-arch", OK: true, Detail: "arm64"})
 	} else {
-		checks = append(checks, Check{Name: "host-arch", OK: false, Detail: "macOS 15 arm64 target requires Apple Silicon host"})
+		checks = append(checks, Check{Name: "host-arch", OK: false, Detail: "macOS Tart targets require Apple Silicon host"})
 	}
 	detail := "target image available"
 	ok := t.Exists(ctx, target.ImageName)
@@ -66,78 +67,84 @@ func (t Tart) IsRunning(ctx context.Context, vmName string) bool {
 	return vmState(out, vmName) == "running"
 }
 
-func (t Tart) Create(ctx context.Context, target targets.Target, claim state.Claim) error {
+func (t Tart) Create(ctx context.Context, target targets.Target, workspace state.Workspace) error {
 	if !t.Exists(ctx, target.ImageName) {
 		return fmt.Errorf("target %q needs a local target image; Trybox setup for target images is not implemented yet", target.Name)
 	}
-	if t.Exists(ctx, claim.VMName) {
+	if t.Exists(ctx, workspace.VMName) {
 		return nil
 	}
-	if _, err := tart(ctx, "clone", target.ImageName, claim.VMName); err != nil {
+	if _, err := tart(ctx, "clone", target.ImageName, workspace.VMName); err != nil {
 		return err
 	}
 	_, err := tart(ctx,
-		"set", claim.VMName,
-		"--cpu", strconv.Itoa(target.CPU),
-		"--memory", strconv.Itoa(target.MemoryMB),
+		"set", workspace.VMName,
+		"--cpu", strconv.Itoa(workspace.CPU),
+		"--memory", strconv.Itoa(workspace.MemoryMB),
 		"--display", target.Display,
-		"--disk-size", strconv.Itoa(target.DiskGB),
+		"--disk-size", strconv.Itoa(workspace.DiskGB),
 		"--random-mac",
 		"--random-serial",
 	)
 	return err
 }
 
-func (t Tart) Start(ctx context.Context, target targets.Target, claim state.Claim, opts StartOptions) error {
-	if t.IsRunning(ctx, claim.VMName) {
+func (t Tart) Start(ctx context.Context, target targets.Target, workspace state.Workspace, opts StartOptions) error {
+	if t.IsRunning(ctx, workspace.VMName) {
 		return nil
 	}
 
-	if err := os.MkdirAll(t.LogDir, 0o755); err != nil {
+	if err := os.MkdirAll(t.LogDir, 0o700); err != nil {
 		return err
 	}
-	logPath := filepath.Join(t.LogDir, claim.VMName+".log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logPath := filepath.Join(t.LogDir, workspace.VMName+".log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
 
 	args := []string{"run", "--no-clipboard"}
-	if opts.Headless {
+	if opts.VNC {
+		args = append(args, "--vnc")
+	} else if opts.Headless {
 		args = append(args, "--no-graphics")
 	}
-	args = append(args, claim.VMName)
+	args = append(args, workspace.VMName)
 
-	cmd := exec.CommandContext(ctx, "tart", args...)
+	cmd := exec.Command("tart", args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if err := cmd.Process.Release(); err != nil {
 		return err
 	}
 	time.Sleep(2 * time.Second)
 	return nil
 }
 
-func (t Tart) Stop(ctx context.Context, claim state.Claim) error {
-	if !t.Exists(ctx, claim.VMName) || !t.IsRunning(ctx, claim.VMName) {
+func (t Tart) Stop(ctx context.Context, workspace state.Workspace) error {
+	if !t.Exists(ctx, workspace.VMName) || !t.IsRunning(ctx, workspace.VMName) {
 		return nil
 	}
-	_, err := tart(ctx, "stop", claim.VMName)
+	_, err := tart(ctx, "stop", workspace.VMName)
 	return err
 }
 
-func (t Tart) Destroy(ctx context.Context, claim state.Claim) error {
-	if !t.Exists(ctx, claim.VMName) {
+func (t Tart) Destroy(ctx context.Context, workspace state.Workspace) error {
+	if !t.Exists(ctx, workspace.VMName) {
 		return nil
 	}
-	_ = t.Stop(ctx, claim)
-	_, err := tart(ctx, "delete", claim.VMName)
+	_ = t.Stop(ctx, workspace)
+	_, err := tart(ctx, "delete", workspace.VMName)
 	return err
 }
 
-func (t Tart) IP(ctx context.Context, claim state.Claim, waitSeconds int) (string, error) {
-	args := []string{"ip", claim.VMName}
+func (t Tart) IP(ctx context.Context, workspace state.Workspace, waitSeconds int) (string, error) {
+	args := []string{"ip", workspace.VMName}
 	if waitSeconds > 0 {
 		args = append(args, "--wait", strconv.Itoa(waitSeconds))
 	}
@@ -148,8 +155,8 @@ func (t Tart) IP(ctx context.Context, claim state.Claim, waitSeconds int) (strin
 	return strings.TrimSpace(out), nil
 }
 
-func (t Tart) Exec(ctx context.Context, target targets.Target, claim state.Claim, command []string, opts ExecOptions) (int, error) {
-	ip, err := t.IP(ctx, claim, 120)
+func (t Tart) Exec(ctx context.Context, target targets.Target, workspace state.Workspace, command []string, opts ExecOptions) (int, error) {
+	ip, err := t.IP(ctx, workspace, 120)
 	if err != nil {
 		return -1, err
 	}

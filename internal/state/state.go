@@ -1,28 +1,45 @@
 package state
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type Store struct {
-	Root      string
-	ClaimsDir string
-	RunsDir   string
-	LogsDir   string
-	KeysDir   string
+	Root          string
+	WorkspacesDir string
+	RunsDir       string
+	LogsDir       string
+	KeysDir       string
 }
 
-type Claim struct {
+type Config struct {
+	SchemaVersion      int       `json:"schema_version"`
+	DefaultTarget      string    `json:"default_target,omitempty"`
+	DefaultRepoRoot    string    `json:"default_repo_root,omitempty"`
+	DefaultWorkspaceID string    `json:"default_workspace_id,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+type Workspace struct {
+	SchemaVersion   int       `json:"schema_version"`
 	ID              string    `json:"id"`
 	Target          string    `json:"target"`
 	Backend         string    `json:"backend"`
 	VMName          string    `json:"vm_name"`
 	RepoRoot        string    `json:"repo_root"`
+	RepoRootHash    string    `json:"repo_root_hash"`
+	CPU             int       `json:"cpu,omitempty"`
+	MemoryMB        int       `json:"memory_mb,omitempty"`
+	DiskGB          int       `json:"disk_gb,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	LastRunLog      string    `json:"last_run_log,omitempty"`
@@ -32,74 +49,100 @@ type Claim struct {
 }
 
 type Run struct {
-	ID        string    `json:"id"`
-	ClaimID   string    `json:"claim_id"`
-	Target    string    `json:"target"`
-	VMName    string    `json:"vm_name"`
-	RepoRoot  string    `json:"repo_root"`
-	Command   []string  `json:"command"`
-	StartedAt time.Time `json:"started_at"`
-	EndedAt   time.Time `json:"ended_at,omitempty"`
-	ExitCode  int       `json:"exit_code"`
-	StdoutLog string    `json:"stdout_log"`
-	StderrLog string    `json:"stderr_log"`
-	EventsLog string    `json:"events_log"`
+	SchemaVersion int       `json:"schema_version"`
+	ID            string    `json:"id"`
+	WorkspaceID   string    `json:"workspace_id"`
+	Target        string    `json:"target"`
+	VMName        string    `json:"vm_name"`
+	RepoRoot      string    `json:"repo_root"`
+	Command       []string  `json:"command"`
+	StartedAt     time.Time `json:"started_at"`
+	EndedAt       time.Time `json:"ended_at,omitempty"`
+	ExitCode      int       `json:"exit_code"`
+	StdoutLog     string    `json:"stdout_log"`
+	StderrLog     string    `json:"stderr_log"`
+	EventsLog     string    `json:"events_log"`
 }
 
 func DefaultStore() (Store, error) {
-	configDir, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return Store{}, err
 	}
-	root := filepath.Join(configDir, "trybox")
+	root := filepath.Join(home, ".trybox")
 	return Store{
-		Root:      root,
-		ClaimsDir: filepath.Join(root, "claims"),
-		RunsDir:   filepath.Join(root, "runs"),
-		LogsDir:   filepath.Join(root, "logs"),
-		KeysDir:   filepath.Join(root, "keys"),
+		Root:          root,
+		WorkspacesDir: filepath.Join(root, "workspaces"),
+		RunsDir:       filepath.Join(root, "runs"),
+		LogsDir:       filepath.Join(root, "logs"),
+		KeysDir:       filepath.Join(root, "keys"),
 	}, nil
 }
 
 func (s Store) Init() error {
-	for _, dir := range []string{s.Root, s.ClaimsDir, s.RunsDir, s.LogsDir, s.KeysDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	for _, dir := range []string{s.Root, s.WorkspacesDir, s.RunsDir, s.LogsDir, s.KeysDir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s Store) ClaimPath(id string) string {
-	return filepath.Join(s.ClaimsDir, id+".json")
+func (s Store) WorkspacePath(id string) string {
+	return filepath.Join(s.WorkspacesDir, id+".json")
 }
 
-func (s Store) SaveClaim(claim Claim) error {
-	claim.UpdatedAt = time.Now().UTC()
-	if claim.CreatedAt.IsZero() {
-		claim.CreatedAt = claim.UpdatedAt
-	}
-	data, err := json.MarshalIndent(claim, "", "  ")
+func (s Store) ConfigPath() string {
+	return filepath.Join(s.Root, "config.json")
+}
+
+func (s Store) LoadConfig() (Config, error) {
+	data, err := os.ReadFile(s.ConfigPath())
 	if err != nil {
-		return err
+		if errors.Is(err, os.ErrNotExist) {
+			return Config{}, nil
+		}
+		return Config{}, err
 	}
-	return os.WriteFile(s.ClaimPath(claim.ID), append(data, '\n'), 0o644)
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return Config{}, err
+	}
+	return config, nil
 }
 
-func (s Store) LoadClaim(id string) (Claim, error) {
-	data, err := os.ReadFile(s.ClaimPath(id))
+func (s Store) SaveConfig(config Config) error {
+	config.SchemaVersion = 1
+	config.UpdatedAt = time.Now().UTC()
+	return writeJSON(s.ConfigPath(), config)
+}
+
+func (s Store) SaveWorkspace(workspace Workspace) error {
+	workspace.SchemaVersion = 1
+	workspace.UpdatedAt = time.Now().UTC()
+	if workspace.CreatedAt.IsZero() {
+		workspace.CreatedAt = workspace.UpdatedAt
+	}
+	return writeJSON(s.WorkspacePath(workspace.ID), workspace)
+}
+
+func (s Store) LoadWorkspace(id string) (Workspace, error) {
+	data, err := os.ReadFile(s.WorkspacePath(id))
 	if err != nil {
-		return Claim{}, err
+		return Workspace{}, err
 	}
-	var claim Claim
-	if err := json.Unmarshal(data, &claim); err != nil {
-		return Claim{}, err
+	var workspace Workspace
+	if err := json.Unmarshal(data, &workspace); err != nil {
+		return Workspace{}, err
 	}
-	return claim, nil
+	return workspace, nil
 }
 
-func (s Store) RemoveClaim(id string) error {
-	err := os.Remove(s.ClaimPath(id))
+func (s Store) RemoveWorkspace(id string) error {
+	err := os.Remove(s.WorkspacePath(id))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -110,45 +153,43 @@ func (s Store) RunDir(id string) string {
 	return filepath.Join(s.RunsDir, id)
 }
 
-func (s Store) KeyDir(claimID string) string {
-	return filepath.Join(s.KeysDir, claimID)
+func (s Store) KeyDir(workspaceID string) string {
+	return filepath.Join(s.KeysDir, workspaceID)
 }
 
-func (s Store) NewRun(claim Claim, command []string) (Run, error) {
-	id := "run_" + time.Now().UTC().Format("20060102T150405")
+func (s Store) NewRun(workspace Workspace, command []string) (Run, error) {
+	id := newRunID()
 	dir := s.RunDir(id)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Run{}, err
 	}
 	return Run{
-		ID:        id,
-		ClaimID:   claim.ID,
-		Target:    claim.Target,
-		VMName:    claim.VMName,
-		RepoRoot:  claim.RepoRoot,
-		Command:   command,
-		StartedAt: time.Now().UTC(),
-		ExitCode:  -1,
-		StdoutLog: filepath.Join(dir, "stdout.log"),
-		StderrLog: filepath.Join(dir, "stderr.log"),
-		EventsLog: filepath.Join(dir, "events.ndjson"),
+		SchemaVersion: 1,
+		ID:            id,
+		WorkspaceID:   workspace.ID,
+		Target:        workspace.Target,
+		VMName:        workspace.VMName,
+		RepoRoot:      workspace.RepoRoot,
+		Command:       command,
+		StartedAt:     time.Now().UTC(),
+		ExitCode:      -1,
+		StdoutLog:     filepath.Join(dir, "stdout.log"),
+		StderrLog:     filepath.Join(dir, "stderr.log"),
+		EventsLog:     filepath.Join(dir, "events.ndjson"),
 	}, nil
 }
 
 func (s Store) SaveRun(run Run) error {
 	dir := s.RunDir(run.ID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(run, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, "meta.json"), append(data, '\n'), 0o644)
+	run.SchemaVersion = 1
+	return writeJSON(filepath.Join(dir, "meta.json"), run)
 }
 
 func (s Store) AppendEvent(run Run, event string, payload any) error {
-	f, err := os.OpenFile(run.EventsLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(run.EventsLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -169,8 +210,67 @@ func (s Store) AppendEvent(run Run, event string, payload any) error {
 	return err
 }
 
-func ClaimID(targetName, repoRoot string) string {
-	return "claim_" + slug(targetName) + "_" + slug(filepath.Base(repoRoot))
+func WorkspaceID(targetName, repoRoot string) string {
+	hash := repoHash(repoRoot)
+	return "workspace_" + slug(targetName) + "_" + slug(filepath.Base(repoRoot)) + "_" + hash[:12]
+}
+
+func WorkspaceVMName(workspaceID string) string {
+	name := strings.TrimPrefix(workspaceID, "workspace_")
+	name = strings.ReplaceAll(name, "_", "-")
+	if len(name) > 42 {
+		parts := strings.Split(name, "-")
+		hash := parts[len(parts)-1]
+		name = strings.Join(parts[:min(2, len(parts)-1)], "-") + "-" + hash
+	}
+	return "trybox-ws-" + name
+}
+
+func RepoRootHash(repoRoot string) string {
+	return repoHash(repoRoot)
+}
+
+func writeJSON(path string, value any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func newRunID() string {
+	var b [3]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "run_" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	}
+	return "run_" + time.Now().UTC().Format("20060102T150405Z") + "_" + hex.EncodeToString(b[:])
+}
+
+func repoHash(repoRoot string) string {
+	sum := sha256.Sum256([]byte(repoRoot))
+	return hex.EncodeToString(sum[:])
 }
 
 func slug(input string) string {

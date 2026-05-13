@@ -1,6 +1,6 @@
 # Trybox Spec
 
-Trybox creates secure local workspaces for CI-like Firefox development and
+Trybox creates clean local VM workspaces for Mozilla product development and
 debugging.
 
 ## MVP
@@ -10,20 +10,20 @@ debugging.
 - Built-in macOS targets for the public macOS families Tart currently
   publishes.
 - Trybox-owned macOS target image.
-- Repo-bound VM claims.
+- Repo-bound VM workspaces.
 - Durable run logs.
 - JSON output for agent workflows.
-- Manifest-based sync for tracked and nonignored local files.
+- Manifest-based sync for tracked files, repository metadata, and nonignored
+  local files.
 - Sync planning before large transfers.
-- Local target names instead of production pooling concepts or backend
-  internals.
+- Local target names instead of backend internals.
 
 ## Phase 1.5
 
-- Patch-over-seed source sync on top of an in-guest clean checkout.
+- Incremental sync improvements for very large checkouts.
 - Artifact collection.
 - Screenshots.
-- Task import and plan.
+- Command plan import and review.
 - Target config files.
 - Per-run timeout and network policy.
 - Optional host helper sandboxing, with `sandbox-exec` only as best-effort
@@ -32,16 +32,16 @@ debugging.
 ## Phase 2
 
 - Windows backend.
-- Windows targets matching CI-like Firefox Windows images.
-- Linux command sandbox backend for Docker-style and task-debugger workflows.
+- Windows targets for clean Mozilla product debugging.
+- Linux command sandbox backend for container-style workflows.
 
 ## Example Agent Flow
 
 ```sh
 trybox doctor --json
-trybox up --target macos15-arm64 --repo ~/firefox --json
-trybox sync --repo ~/firefox --json
-trybox run --repo ~/firefox -- ./mach test path/to/test
+trybox up --target macos15-arm64 --repo ~/mozilla-unified --json
+trybox sync --repo ~/mozilla-unified --json
+trybox run --repo ~/mozilla-unified -- ./mach test path/to/test
 trybox logs run_20260513T153000
 trybox status --json
 ```

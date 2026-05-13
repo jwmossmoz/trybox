@@ -10,7 +10,6 @@ type Target struct {
 	Backend       string `json:"-"`
 	ImageName     string `json:"-"`
 	SourceImage   string `json:"-"`
-	VMName        string `json:"-"`
 	OS            string `json:"os"`
 	Version       string `json:"version"`
 	Arch          string `json:"arch"`
@@ -89,7 +88,6 @@ func macOSTarget(major, version, codename, arch string) Target {
 		Backend:       "tart",
 		ImageName:     "trybox-macos" + major + "-arm64-image",
 		SourceImage:   "ghcr.io/cirruslabs/macos-" + codename + "-base:latest",
-		VMName:        "trybox-" + name,
 		OS:            "macos",
 		Version:       version,
 		Arch:          arch,
@@ -100,6 +98,6 @@ func macOSTarget(major, version, codename, arch string) Target {
 		Display:       "1920x1200",
 		Username:      "admin",
 		Password:      "admin",
-		GuestWorkPath: "/Users/admin/trybox/work/firefox",
+		GuestWorkPath: "/Users/admin/trybox",
 	}
 }

@@ -5,15 +5,12 @@ host into the execution environment.
 
 ## Defaults
 
-- No production provisioning.
-- No CI credentials.
-- No CI registration.
 - No SSH agent forwarding.
 - No host home-directory mount.
 - No environment variable forwarding except explicit future allowlists.
 - Tart runs with clipboard sharing disabled.
 - Source access is limited to the selected repo path.
-- Task payload execution must be planned before it is run.
+- Imported command execution must be planned before it is run.
 
 ## Isolation Classes
 
@@ -21,21 +18,21 @@ Different tools provide different boundaries:
 
 | Tool family | Boundary | Useful for Trybox | Not enough for |
 | --- | --- | --- | --- |
-| Tart / Apple Virtualization.Framework | Full macOS VM | macOS CI-like debugging | Process-level policy inside Linux |
+| Tart / Apple Virtualization.Framework | Full macOS VM | Native macOS debugging | Process-level policy inside Linux |
 | Windows Sandbox / Hyper-V | Full Windows environment | Phase 2 Windows targets | macOS reproduction |
 | Bubblewrap | Linux process sandbox | Future Linux command sandboxing | macOS/Windows OS fidelity |
-| nsjail | Linux process sandbox with seccomp/cgroups | Future stricter Linux task execution | macOS/Windows OS fidelity |
-| Rootless Podman | Linux container | Docker-style task reproduction | Native macOS/Windows tasks |
-| gVisor | Sandboxed Linux container runtime | Stronger Linux container isolation | Native macOS/Windows tasks |
+| nsjail | Linux process sandbox with seccomp/cgroups | Future stricter Linux command execution | macOS/Windows OS fidelity |
+| Rootless Podman | Linux container | Container-style command reproduction | Native macOS/Windows workflows |
+| gVisor | Sandboxed Linux container runtime | Stronger Linux container isolation | Native macOS/Windows workflows |
 | Firecracker | Linux microVM | Future fast Linux VM backend | macOS GUI/native debugging |
 
 ## Why Tart First
 
-The first problem is native macOS Firefox debugging in a clean machine. A
-process sandbox cannot reproduce OS version, GUI behavior, screen capture,
-permissions, framework behavior, or Apple Silicon VM quirks. Tart provides the
-machine boundary and lifecycle. Trybox provides the Firefox-aware workflow on
-top.
+The first problem is native macOS debugging for Mozilla product source trees in
+a clean machine. A process sandbox cannot reproduce OS version, GUI behavior,
+screen capture, permissions, framework behavior, or Apple Silicon VM quirks.
+Tart provides the machine boundary and lifecycle. Trybox provides the
+Mozilla-source-aware workflow on top.
 
 ## Future Sandbox Layer
 
@@ -47,7 +44,7 @@ type CommandSandbox interface {
 }
 ```
 
-That layer is primarily for Linux and imported task payloads. It should not be
+That layer is primarily for Linux and imported command plans. It should not be
 part of the macOS MVP unless a concrete use case requires it.
 
 ## macOS sandbox-exec
@@ -71,5 +68,5 @@ Permitted future use:
 Not permitted as a core design:
 
 - Replacing Tart VM isolation.
-- Running Firefox builds directly on the host as the main workflow.
+- Running product builds directly on the host as the main workflow.
 - Depending on undocumented SBPL behavior for security or correctness.

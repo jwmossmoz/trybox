@@ -32,27 +32,27 @@ func (r Reference) IsRunning(ctx context.Context, vmName string) bool {
 	return false
 }
 
-func (r Reference) Create(ctx context.Context, target targets.Target, claim state.Claim) error {
+func (r Reference) Create(ctx context.Context, target targets.Target, workspace state.Workspace) error {
 	return referenceErr(target)
 }
 
-func (r Reference) Start(ctx context.Context, target targets.Target, claim state.Claim, opts StartOptions) error {
+func (r Reference) Start(ctx context.Context, target targets.Target, workspace state.Workspace, opts StartOptions) error {
 	return referenceErr(target)
 }
 
-func (r Reference) Stop(ctx context.Context, claim state.Claim) error {
+func (r Reference) Stop(ctx context.Context, workspace state.Workspace) error {
 	return nil
 }
 
-func (r Reference) Destroy(ctx context.Context, claim state.Claim) error {
+func (r Reference) Destroy(ctx context.Context, workspace state.Workspace) error {
 	return nil
 }
 
-func (r Reference) IP(ctx context.Context, claim state.Claim, waitSeconds int) (string, error) {
-	return "", fmt.Errorf("reference target %q has no runnable VM", claim.Target)
+func (r Reference) IP(ctx context.Context, workspace state.Workspace, waitSeconds int) (string, error) {
+	return "", fmt.Errorf("reference target %q has no runnable VM", workspace.Target)
 }
 
-func (r Reference) Exec(ctx context.Context, target targets.Target, claim state.Claim, command []string, opts ExecOptions) (int, error) {
+func (r Reference) Exec(ctx context.Context, target targets.Target, workspace state.Workspace, command []string, opts ExecOptions) (int, error) {
 	return -1, referenceErr(target)
 }
 

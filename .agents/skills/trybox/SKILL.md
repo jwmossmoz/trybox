@@ -1,63 +1,68 @@
 ---
 name: trybox
-description: Use when a user asks an agent to reproduce, debug, or verify Firefox behavior in a clean local Trybox workspace. Trigger on requests to start a macOS target VM, sync a dirty checkout, run focused mach commands, inspect run logs/events/status, or compare behavior across macOS targets. Prefer Trybox over direct Tart, SSH, or host VM commands.
+description: >
+  Use when operating Trybox VM workspaces for source debugging: macOS VM
+  startup, dirty checkout sync, Tart desktop/VNC, guest runs, and logs. DO NOT
+  USE FOR editing Trybox itself; follow repo AGENTS.md.
 ---
 
 # Trybox
 
-**UTILITY SKILL** for using Trybox as a clean Firefox workspace.
+**UTILITY SKILL** for using Trybox as a clean local VM workspace.
 
 ## USE FOR:
 
-- "start a macOS VM"
-- "sync my checkout"
-- "run mach in Trybox"
-- "read Trybox logs"
+- Workspace start/status.
+- Dirty checkout sync.
+- Guest command runs.
+- Desktop or VNC access.
+- Logs and events.
 
 ## DO NOT USE FOR:
 
-- Editing Trybox source code.
-- Bypassing Trybox with direct `tart`, SSH, or host VM commands.
-- Installing packages, changing global guest state, or using secrets.
+- Editing Trybox source.
+- Direct `tart`/SSH unless debugging Trybox itself.
+- Guest-global changes, secrets, or target image mutation.
 
 ## Workflow
 
 ```sh
 trybox doctor --json
 trybox target list --json
-trybox up --target macos15-arm64 --repo ~/firefox --json
-trybox sync --repo ~/firefox --json
-trybox run --repo ~/firefox -- ./mach test <path-or-suite>
-trybox events <run-id>
-trybox logs <run-id>
-trybox status --json
+trybox workspace show --json
+trybox workspace use --target <target> --cpu <n> --memory-mb <mib> --disk-gb <gib> <checkout>
+trybox up --json
+trybox sync --json
+trybox run -- <command>
 ```
 
-## Command Policy
+Use the configured workspace when correct. Set one when missing, wrong, or when
+VM specs need changing. Choose targets from the user request or `target list`.
 
-Prefer narrow commands tied to the debugging request.
+## Desktop
 
-Allowed: `./mach ...`, `mach ...`, repo `python3`, `git status/diff/log`, and
-read-only `pwd`, `ls`, `find`, `cat`, `sed`, or `rg`.
-
-Avoid shell wrappers such as `bash -lc ...` unless requested.
-
-## Targets
-
-Use `macos15-arm64` by default.
-
-Use `macos15-x64-rosetta` for x64 behavior through Rosetta.
+- `trybox view`: auto-login plus Tart native display.
+- `trybox view --vnc`: Tart VNC plus Apple's Screen Sharing.
+- `trybox view --vnc --no-open --json`: Tart VNC details only.
 
 ## Examples
 
-- Run: `trybox run --repo ~/firefox -- ./mach test dom/foo`.
-- Inspect: `trybox events <run-id>` then `trybox logs <run-id>`.
+```sh
+trybox run -- env MOZCONFIG=.trybox-smoke.mozconfig ./mach build
+trybox view
+trybox run -- <small visible test command>
+```
 
 ## Troubleshooting
 
-- `target-image` missing: first-time `trybox bootstrap` setup is needed.
-- No run ID: use `trybox history --json`.
+- Sync includes `.git`/`.hg`; repo tooling may need VCS metadata.
+- Large syncs are expected; do not drop metadata just for speed.
+- Guest workspace path is `~/trybox`.
+- On failure, inspect `trybox events <run-id> --json` and `trybox logs
+  <run-id>` before retrying.
+- Early images may use `admin` / `admin`; `trybox view` automates auto-login.
 
 ## Report
 
-Include target, command, run ID, exit code, log summary, and limitations.
+Report target, workspace ID, VM specs when relevant, command, run ID, exit code,
+log summary, and native Tart vs VNC mode.
