@@ -92,6 +92,9 @@ func Run(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "help", "-h", "--help":
+		if len(args) > 1 && args[0] == "help" {
+			return printCommandHelp(args[1:])
+		}
 		usage(os.Stdout)
 		return nil
 	case "doctor":
@@ -100,8 +103,8 @@ func Run(ctx context.Context, args []string) error {
 		return target(ctx, args[1:])
 	case "workspace":
 		return workspaceCommand(ctx, args[1:])
-	case "warmup", "up":
-		return warmup(ctx, args[1:])
+	case "up":
+		return up(ctx, args[1:])
 	case "sync":
 		return syncWorkspace(ctx, args[1:])
 	case "status":
@@ -144,19 +147,49 @@ func (e exitError) Error() string {
 	return fmt.Sprintf("exit %d", e.Code)
 }
 
-func baseFlags(name string, args []string) (*flag.FlagSet, *options) {
+type flagSpec struct {
+	Target    bool
+	Repo      bool
+	JSON      bool
+	VNC       bool
+	Resources bool
+}
+
+func commandFlags(name string, spec flagSpec) (*flag.FlagSet, *options) {
 	opts := &options{Headless: true}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.Var(targetFlag{opts: opts}, "target", "target name")
-	fs.StringVar(&opts.Repo, "repo", "", "repository root")
-	fs.BoolVar(&opts.JSON, "json", false, "emit JSON")
-	fs.BoolVar(&opts.Headless, "headless", true, "run VM without graphics")
-	fs.BoolVar(&opts.VNC, "vnc", false, "start VM with VNC display")
-	fs.IntVar(&opts.CPU, "cpu", 0, "override VM CPU count for this workspace")
-	fs.IntVar(&opts.MemoryMB, "memory-mb", 0, "override VM memory in MiB for this workspace")
-	fs.IntVar(&opts.DiskGB, "disk-gb", 0, "override VM disk size in GiB for this workspace")
+	fs.Usage = func() {
+		fmt.Fprint(os.Stdout, commandUsage(name))
+	}
+	if spec.Target {
+		fs.Var(targetFlag{opts: opts}, "target", "target name")
+	}
+	if spec.Repo {
+		fs.StringVar(&opts.Repo, "repo", "", "repository root")
+	}
+	if spec.JSON {
+		fs.BoolVar(&opts.JSON, "json", false, "emit JSON")
+	}
+	if spec.VNC {
+		fs.BoolVar(&opts.VNC, "vnc", false, "start VM with VNC display")
+	}
+	if spec.Resources {
+		fs.IntVar(&opts.CPU, "cpu", 0, "override VM CPU count for this workspace")
+		fs.IntVar(&opts.MemoryMB, "memory-mb", 0, "override VM memory in MiB for this workspace")
+		fs.IntVar(&opts.DiskGB, "disk-gb", 0, "override VM disk size in GiB for this workspace")
+	}
 	return fs, opts
+}
+
+func parseFlags(fs *flag.FlagSet, args []string) (bool, error) {
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 type targetFlag struct {
@@ -177,8 +210,8 @@ func (f targetFlag) Set(value string) error {
 }
 
 func doctor(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("doctor", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("doctor", flagSpec{Target: true, JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	_, config, err := loadStoreConfig()
@@ -239,12 +272,19 @@ func allChecksOK(checks []backend.Check) bool {
 
 func target(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "list" {
+		if len(args) == 0 || isHelp(args[0]) {
+			fmt.Fprint(os.Stdout, commandUsage("target"))
+			return nil
+		}
 		return fmt.Errorf("usage: trybox target list [--json]")
 	}
 	fs := flag.NewFlagSet("target list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stdout, commandUsage("target list"))
+	}
 	jsonOut := fs.Bool("json", false, "emit JSON")
-	if err := fs.Parse(args[1:]); err != nil {
+	if handled, err := parseFlags(fs, args[1:]); handled || err != nil {
 		return err
 	}
 	list := targets.List()
@@ -268,23 +308,33 @@ func target(ctx context.Context, args []string) error {
 
 func workspaceCommand(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: trybox workspace use [repo] | show | clear")
+		fmt.Fprint(os.Stdout, commandUsage("workspace"))
+		_ = ctx
+		return nil
+	}
+	if isHelp(args[0]) {
+		fmt.Fprint(os.Stdout, commandUsage("workspace"))
+		_ = ctx
+		return nil
+	}
+	if len(args) > 1 && isHelp(args[1]) {
+		return printCommandHelp([]string{"workspace", args[0]})
 	}
 	switch args[0] {
 	case "use":
 		return workspaceUse(ctx, args[1:])
-	case "show", "current":
+	case "show":
 		return workspaceShow(ctx, args[1:])
-	case "clear":
-		return workspaceClear(ctx, args[1:])
+	case "unset":
+		return workspaceUnset(ctx, args[1:])
 	default:
-		return fmt.Errorf("usage: trybox workspace use [repo] | show | clear")
+		return fmt.Errorf("usage: trybox workspace show | unset | use")
 	}
 }
 
 func workspaceUse(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("workspace use", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("workspace use", flagSpec{Target: true, JSON: true, Resources: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	rest := fs.Args()
@@ -335,8 +385,8 @@ func workspaceUse(ctx context.Context, args []string) error {
 }
 
 func workspaceShow(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("workspace show", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("workspace show", flagSpec{JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	store, config, err := loadStoreConfig()
@@ -371,9 +421,9 @@ func workspaceShow(ctx context.Context, args []string) error {
 	return nil
 }
 
-func workspaceClear(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("workspace clear", args)
-	if err := fs.Parse(args); err != nil {
+func workspaceUnset(ctx context.Context, args []string) error {
+	fs, opts := commandFlags("workspace unset", flagSpec{JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	store, _, err := loadStoreConfig()
@@ -386,14 +436,14 @@ func workspaceClear(ctx context.Context, args []string) error {
 	if opts.JSON {
 		return writeJSON(os.Stdout, map[string]any{"default_workspace_id": ""})
 	}
-	fmt.Println("default workspace: cleared")
+	fmt.Println("default workspace: unset")
 	_ = ctx
 	return nil
 }
 
-func warmup(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("warmup", args)
-	if err := fs.Parse(args); err != nil {
+func up(ctx context.Context, args []string) error {
+	fs, opts := commandFlags("up", flagSpec{Target: true, Repo: true, JSON: true, Resources: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	target, workspace, b, store, err := setup(opts)
@@ -411,8 +461,8 @@ func warmup(ctx context.Context, args []string) error {
 }
 
 func status(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("status", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("status", flagSpec{Target: true, Repo: true, JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	_, workspace, b, store, err := setup(opts)
@@ -442,10 +492,10 @@ func status(ctx context.Context, args []string) error {
 }
 
 func view(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("view", args)
+	fs, opts := commandFlags("view", flagSpec{Target: true, Repo: true, JSON: true, VNC: true})
 	noOpen := fs.Bool("no-open", false, "print the VNC URL without opening Screen Sharing")
 	reuseClient := fs.Bool("reuse-client", false, "reuse any existing Screen Sharing client instead of opening a fresh one")
-	if err := fs.Parse(args); err != nil {
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	if *noOpen {
@@ -587,8 +637,8 @@ func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state
 }
 
 func stop(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("stop", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("stop", flagSpec{Target: true, Repo: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	_, workspace, b, _, err := setup(opts)
@@ -601,8 +651,11 @@ func stop(ctx context.Context, args []string) error {
 func destroy(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("destroy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stdout, commandUsage("destroy"))
+	}
 	jsonOut := fs.Bool("json", false, "emit JSON")
-	if err := fs.Parse(args); err != nil {
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	if len(fs.Args()) != 0 {
@@ -648,8 +701,8 @@ func destroy(ctx context.Context, args []string) error {
 }
 
 func syncWorkspace(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("sync", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("sync", flagSpec{Target: true, Repo: true, JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	target, workspace, b, store, err := setup(opts)
@@ -676,8 +729,8 @@ func syncWorkspace(ctx context.Context, args []string) error {
 }
 
 func runCommand(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("run", args)
-	if err := fs.Parse(args); err != nil {
+	fs, opts := commandFlags("run", flagSpec{Target: true, Repo: true, JSON: true})
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	command := fs.Args()
@@ -758,6 +811,11 @@ func runCommand(ctx context.Context, args []string) error {
 }
 
 func logs(ctx context.Context, args []string) error {
+	if len(args) == 1 && isHelp(args[0]) {
+		fmt.Fprint(os.Stdout, commandUsage("logs"))
+		_ = ctx
+		return nil
+	}
 	if len(args) != 1 {
 		return fmt.Errorf("usage: trybox logs <run-id>")
 	}
@@ -786,6 +844,11 @@ func logs(ctx context.Context, args []string) error {
 }
 
 func events(ctx context.Context, args []string) error {
+	if len(args) == 1 && isHelp(args[0]) {
+		fmt.Fprint(os.Stdout, commandUsage("events"))
+		_ = ctx
+		return nil
+	}
 	jsonOut := false
 	runID := ""
 	for _, arg := range args {
@@ -835,9 +898,12 @@ func events(ctx context.Context, args []string) error {
 func history(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("history", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stdout, commandUsage("history"))
+	}
 	jsonOut := fs.Bool("json", false, "emit JSON")
 	limit := fs.Int("limit", 20, "maximum runs to show")
-	if err := fs.Parse(args); err != nil {
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	store, err := state.DefaultStore()
@@ -886,9 +952,9 @@ func history(ctx context.Context, args []string) error {
 }
 
 func syncPlan(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("sync-plan", args)
+	fs, opts := commandFlags("sync-plan", flagSpec{Repo: true, JSON: true})
 	limit := fs.Int("limit", 5, "largest files/directories to show")
-	if err := fs.Parse(args); err != nil {
+	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
 	_, config, err := loadStoreConfig()
@@ -1320,6 +1386,128 @@ func printWarnings(warnings []string) {
 	}
 }
 
+func isHelp(arg string) bool {
+	return arg == "help" || arg == "-h" || arg == "--help"
+}
+
+func printCommandHelp(parts []string) error {
+	if len(parts) == 0 {
+		usage(os.Stdout)
+		return nil
+	}
+	name := strings.Join(parts, " ")
+	text := commandUsage(name)
+	if text == "" {
+		return fmt.Errorf("unknown help topic %q", name)
+	}
+	fmt.Fprint(os.Stdout, text)
+	return nil
+}
+
+func commandUsage(name string) string {
+	usages := map[string]string{
+		"destroy": `trybox destroy: delete only the current workspace VM
+
+Usage:
+  trybox destroy [--json]
+
+Notes:
+  Does not delete the host checkout, run logs, or workspace metadata.
+`,
+		"doctor": `trybox doctor: check host tools and the selected target image
+
+Usage:
+  trybox doctor [--target name] [--json]
+`,
+		"events": `trybox events: print a run event stream
+
+Usage:
+  trybox events <run-id> [--json]
+`,
+		"history": `trybox history: list recent runs
+
+Usage:
+  trybox history [--limit n] [--json]
+`,
+		"logs": `trybox logs: print stdout and stderr logs for a run
+
+Usage:
+  trybox logs <run-id>
+`,
+		"run": `trybox run: sync the workspace and run a command in the guest
+
+Usage:
+  trybox run [--target name] [--repo path] [--json] -- <command>
+`,
+		"status": `trybox status: show workspace VM state
+
+Usage:
+  trybox status [--target name] [--repo path] [--json]
+`,
+		"stop": `trybox stop: stop a workspace VM without deleting it
+
+Usage:
+  trybox stop [--target name] [--repo path]
+`,
+		"sync": `trybox sync: sync the source checkout into the guest workspace
+
+Usage:
+  trybox sync [--target name] [--repo path] [--json]
+`,
+		"sync-plan": `trybox sync-plan: preview the manifest and transfer size
+
+Usage:
+  trybox sync-plan [--repo path] [--limit n] [--json]
+`,
+		"target": `trybox target: inspect built-in target names
+
+Usage:
+  trybox target list [--json]
+`,
+		"target list": `trybox target list: list built-in target names
+
+Usage:
+  trybox target list [--json]
+`,
+		"up": `trybox up: create and start the workspace VM
+
+Usage:
+  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
+`,
+		"view": `trybox view: open the workspace desktop
+
+Usage:
+  trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
+
+Notes:
+  Default display is Tart native. --vnc starts Tart VNC. --no-open leaves no host GUI client open.
+`,
+		"workspace": `trybox workspace: manage the default workspace
+
+Usage:
+  trybox workspace show [--json]
+  trybox workspace unset [--json]
+  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+`,
+		"workspace unset": `trybox workspace unset: unset the default workspace pointer
+
+Usage:
+  trybox workspace unset [--json]
+`,
+		"workspace show": `trybox workspace show: show the configured default workspace
+
+Usage:
+  trybox workspace show [--json]
+`,
+		"workspace use": `trybox workspace use: set the default source checkout and target
+
+Usage:
+  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+`,
+	}
+	return usages[name]
+}
+
 func shellQuote(s string) string {
 	if s == "" {
 		return "''"
@@ -1335,11 +1523,11 @@ func suffix(detail string) string {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `trybox: clean local Mozilla product debugging workspaces
+	fmt.Fprint(w, `trybox: clean local VM workspaces for source debugging
 
 Usage:
   trybox destroy [--json]
-  trybox doctor [--json]
+  trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
   trybox history [--limit n] [--json]
   trybox logs <run-id>
@@ -1349,13 +1537,15 @@ Usage:
   trybox sync [--target name] [--repo path] [--json]
   trybox sync-plan [--repo path] [--limit n] [--json]
   trybox target list [--json]
-  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n]
+  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
   trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
-  trybox workspace clear
   trybox workspace show [--json]
-  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
+  trybox workspace unset [--json]
+  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 
 MVP backend:
   macOS targets via Tart.
+
+Run "trybox help <command>" or "trybox <command> --help" for command help.
 `)
 }

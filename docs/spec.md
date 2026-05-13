@@ -1,7 +1,6 @@
 # Trybox Spec
 
-Trybox creates clean local VM workspaces for Mozilla product development and
-debugging.
+Trybox creates clean local VM workspaces for source debugging.
 
 ## MVP
 
@@ -32,16 +31,16 @@ debugging.
 ## Phase 2
 
 - Windows backend.
-- Windows targets for clean Mozilla product debugging.
+- Windows targets for clean source debugging.
 - Linux command sandbox backend for container-style workflows.
 
 ## Example Agent Flow
 
 ```sh
 trybox doctor --json
-trybox up --target macos15-arm64 --repo ~/mozilla-unified --json
-trybox sync --repo ~/mozilla-unified --json
-trybox run --repo ~/mozilla-unified -- ./mach test path/to/test
+trybox up --target macos15-arm64 --repo ~/src/project --json
+trybox sync --repo ~/src/project --json
+trybox run --repo ~/src/project -- ./build-or-test-command
 trybox logs run_20260513T153000
 trybox status --json
 ```

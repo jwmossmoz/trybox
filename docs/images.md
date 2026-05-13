@@ -2,7 +2,7 @@
 
 Trybox should own the image path eventually. Public Tart images are useful as a
 bootstrap seed, but they are not enough as the long-term foundation for
-repeatable Mozilla product debugging.
+repeatable source debugging.
 
 ## Terms
 
@@ -90,7 +90,7 @@ https://tart.run/quick-start/
 ```
 
 That is enough for a first `trybox bootstrap`, but Trybox should treat it as a
-seed, not as the stable product image.
+seed, not as the stable source image.
 
 ## Tart macOS Seed Coverage
 

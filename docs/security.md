@@ -28,11 +28,11 @@ Different tools provide different boundaries:
 
 ## Why Tart First
 
-The first problem is native macOS debugging for Mozilla product source trees in
-a clean machine. A process sandbox cannot reproduce OS version, GUI behavior,
-screen capture, permissions, framework behavior, or Apple Silicon VM quirks.
-Tart provides the machine boundary and lifecycle. Trybox provides the
-Mozilla-source-aware workflow on top.
+The first problem is native macOS debugging for large source trees in a clean
+machine. A process sandbox cannot reproduce OS version, GUI behavior, screen
+capture, permissions, framework behavior, or Apple Silicon VM quirks. Tart
+provides the machine boundary and lifecycle. Trybox provides the source-aware
+workflow on top.
 
 ## Future Sandbox Layer
 
@@ -68,5 +68,5 @@ Permitted future use:
 Not permitted as a core design:
 
 - Replacing Tart VM isolation.
-- Running product builds directly on the host as the main workflow.
+- Running source builds directly on the host as the main workflow.
 - Depending on undocumented SBPL behavior for security or correctness.

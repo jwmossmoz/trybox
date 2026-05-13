@@ -1,7 +1,7 @@
 # Trybox Architecture
 
-Trybox is a local execution control plane for clean Mozilla product development
-workspaces. The first backend is Tart, but the product model is not "a Tart
+Trybox is a local execution control plane for clean source debugging
+workspaces. The first backend is Tart, but the public model is not "a Tart
 wrapper." The public nouns are:
 
 - **Target**: an OS/architecture shape, such as `macos15-arm64`.
@@ -113,9 +113,9 @@ workflow.
 ## Target References
 
 Trybox targets are local OS and architecture shapes. They can be chosen to
-match the Mozilla product behavior a developer needs to reproduce, but the
-normal workflow should stay target/workspace/run based instead of exposing
-backend image details.
+match the behavior a developer needs to reproduce, but the normal workflow
+should stay target/workspace/run based instead of exposing backend image
+details.
 
 The first implementation expects a Trybox macOS target image with SSH enabled.
 Creating that target image is part of the Trybox setup story, not something
@@ -130,7 +130,7 @@ The MVP syncs the Git-managed working set and repository metadata into the
 guest:
 
 ```text
-host <mozilla source checkout> -> guest ~/trybox
+host <source checkout> -> guest ~/trybox
 ```
 
 The intended large-repo sync path is intentionally simple:

@@ -2,9 +2,9 @@
 
 Clean local VM workspaces for source debugging.
 
-Trybox is a local counterpart to Mozilla's "try" workflow: sync a dirty
-checkout into a clean VM, run the command there, and keep durable logs. The
-first backend is Tart on Apple Silicon macOS.
+Trybox is a local counterpart to the "try it somewhere clean" workflow: sync a
+dirty checkout into a fresh VM, run the command there, and keep durable logs.
+The first backend is Tart on Apple Silicon macOS.
 
 ## What It Does
 
@@ -26,7 +26,7 @@ Prerequisites:
 ```sh
 go run ./cmd/trybox doctor
 go run ./cmd/trybox target list
-go run ./cmd/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100 ~/mozilla-unified
+go run ./cmd/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100 ~/src/project
 go run ./cmd/trybox up
 go run ./cmd/trybox sync
 go run ./cmd/trybox run -- ./mach --version
@@ -45,7 +45,7 @@ Set or inspect the default workspace:
 
 ```sh
 trybox workspace show
-trybox workspace use --target macos15-arm64 ~/mozilla-unified
+trybox workspace use --target macos15-arm64 ~/src/project
 ```
 
 Plan and sync a dirty checkout:
@@ -96,7 +96,7 @@ trybox bootstrap --target macos15-arm64
 
 ```sh
 trybox destroy [--json]
-trybox doctor [--json]
+trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
 trybox logs <run-id>
@@ -106,11 +106,11 @@ trybox stop [--target name] [--repo path]
 trybox sync [--target name] [--repo path] [--json]
 trybox sync-plan [--repo path] [--limit n] [--json]
 trybox target list [--json]
-trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n]
+trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
 trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
-trybox workspace clear
 trybox workspace show [--json]
-trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
+trybox workspace unset [--json]
+trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 ```
 
 `trybox destroy` deletes only the current workspace VM. It does not delete the
