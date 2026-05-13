@@ -44,6 +44,22 @@ func TestBuildPlanIncludesGitWorkingSetAndMetadata(t *testing.T) {
 	}
 }
 
+func TestBuildPlanRejectsGitfileWorktree(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, ".git"), "gitdir: /Users/example/source/.git/worktrees/feature\n")
+
+	_, err := BuildPlan(context.Background(), repo, 10)
+	if err == nil {
+		t.Fatal("BuildPlan() returned nil error, want git worktree rejection")
+	}
+	message := err.Error()
+	for _, want := range []string{"git worktree", "/Users/example/source/.git/worktrees/feature", "git clone --no-local --no-hardlinks"} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("BuildPlan() error = %q, want substring %q", message, want)
+		}
+	}
+}
+
 func TestIsExcluded(t *testing.T) {
 	excludes := []string{"node_modules/", "*.log", "build/cache"}
 	cases := map[string]bool{

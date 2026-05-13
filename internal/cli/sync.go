@@ -16,7 +16,7 @@ import (
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/state"
 	"github.com/jwmossmoz/trybox/internal/targets"
-	"github.com/jwmossmoz/trybox/internal/workspace"
+	workspacepkg "github.com/jwmossmoz/trybox/internal/workspace"
 )
 
 func syncWorkspace(ctx context.Context, args []string) error {
@@ -26,6 +26,9 @@ func syncWorkspace(ctx context.Context, args []string) error {
 	}
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {
+		return err
+	}
+	if err := workspacepkg.ValidateRepoRoot(workspace.RepoRoot); err != nil {
 		return err
 	}
 	var result syncResult
@@ -65,7 +68,7 @@ func syncPlan(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := workspace.BuildPlan(ctx, repo, *limit)
+	plan, err := workspacepkg.BuildPlan(ctx, repo, *limit)
 	if err != nil {
 		return err
 	}
@@ -92,7 +95,7 @@ func syncPlan(ctx context.Context, args []string) error {
 
 func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run) (syncResult, error) {
 	start := time.Now()
-	plan, err := workspace.BuildPlan(ctx, workspaceState.RepoRoot, 10)
+	plan, err := workspacepkg.BuildPlan(ctx, workspaceState.RepoRoot, 10)
 	if err != nil {
 		return syncResult{}, err
 	}
