@@ -44,36 +44,27 @@ func withWorkspaceLock(ctx context.Context, store state.Store, workspaceID strin
 	return fn()
 }
 
-func workspaceForDestroy(opts *options, store state.Store, config state.Config) (state.Workspace, string, error) {
-	if opts != nil && (opts.TargetSet || opts.Repo != "") {
-		target, err := targets.Get(targetNameFor(opts, config))
-		if err != nil {
-			return state.Workspace{}, "", err
-		}
-		repo, err := resolveRepo(opts.Repo, config)
-		if err != nil {
-			return state.Workspace{}, "", err
-		}
-		workspaceID := state.WorkspaceID(target.Name, repo)
+func workspaceForDestroy(workspaceID string, store state.Store, config state.Config) (state.Workspace, string, error) {
+	if workspaceID != "" {
 		workspace, err := store.LoadWorkspace(workspaceID)
 		if err != nil {
-			return state.Workspace{}, "", fmt.Errorf("load workspace %q for %s at %s: %w", workspaceID, target.Name, repo, err)
+			return state.Workspace{}, "", fmt.Errorf("load workspace %q: %w (see trybox workspace list)", workspaceID, err)
 		}
-		return workspace, "resolved workspace", nil
+		return workspace, "selected workspace", nil
 	}
 	if config.DefaultWorkspaceID == "" {
-		return state.Workspace{}, "", fmt.Errorf("no default workspace is configured; run trybox workspace use <repo> or pass --repo")
+		return state.Workspace{}, "", fmt.Errorf("no default workspace is configured; pass a workspace id (see trybox workspace list) or run trybox workspace use")
 	}
 	workspace, err := store.LoadWorkspace(config.DefaultWorkspaceID)
 	if err != nil {
-		return state.Workspace{}, "", fmt.Errorf("load default workspace %q: %w", config.DefaultWorkspaceID, err)
+		return state.Workspace{}, "", fmt.Errorf("load default workspace %q: %w (run trybox workspace list to see known workspaces, or trybox workspace unset to clear the default)", config.DefaultWorkspaceID, err)
 	}
 	return workspace, "default workspace", nil
 }
 
 func ensureVM(ctx context.Context, target targets.Target, workspace *state.Workspace, b backend.Backend, store state.Store, opts *options) error {
 	if resourceOverridesRequested(opts) && b.Exists(ctx, workspace.VMName) {
-		return fmt.Errorf("resource changes require destroying existing workspace VM %q first", workspace.VMName)
+		return fmt.Errorf("resource changes require destroying existing workspace VM %q first; run: trybox destroy %s", workspace.VMName, workspace.ID)
 	}
 	if err := b.Create(ctx, target, *workspace); err != nil {
 		return err

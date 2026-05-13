@@ -160,6 +160,33 @@ func (s Store) RemoveWorkspace(id string) error {
 	return err
 }
 
+func (s Store) ListWorkspaces() ([]Workspace, error) {
+	entries, err := os.ReadDir(s.WorkspacesDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	workspaces := make([]Workspace, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		workspace, err := s.LoadWorkspace(id)
+		if err != nil {
+			return nil, fmt.Errorf("load workspace %q: %w", id, err)
+		}
+		workspaces = append(workspaces, workspace)
+	}
+	return workspaces, nil
+}
+
 func (s Store) RunDir(id string) string {
 	return filepath.Join(s.RunsDir, id)
 }

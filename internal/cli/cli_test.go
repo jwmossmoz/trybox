@@ -34,7 +34,7 @@ func TestWorkspaceForDestroyDefaultAndResolvedSelection(t *testing.T) {
 		DefaultWorkspaceID: workspaceA.ID,
 	}
 
-	got, selection, err := workspaceForDestroy(&options{}, store, config)
+	got, selection, err := workspaceForDestroy("", store, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,12 +42,16 @@ func TestWorkspaceForDestroyDefaultAndResolvedSelection(t *testing.T) {
 		t.Fatalf("workspaceForDestroy(default) = %s/%s, want %s/default workspace", got.ID, selection, workspaceA.ID)
 	}
 
-	got, selection, err = workspaceForDestroy(&options{Repo: repoB}, store, config)
+	got, selection, err = workspaceForDestroy(workspaceB.ID, store, config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != workspaceB.ID || selection != "resolved workspace" {
-		t.Fatalf("workspaceForDestroy(repo) = %s/%s, want %s/resolved workspace", got.ID, selection, workspaceB.ID)
+	if got.ID != workspaceB.ID || selection != "selected workspace" {
+		t.Fatalf("workspaceForDestroy(id) = %s/%s, want %s/selected workspace", got.ID, selection, workspaceB.ID)
+	}
+
+	if _, _, err := workspaceForDestroy("workspace_does_not_exist", store, config); err == nil {
+		t.Fatal("workspaceForDestroy(missing) returned nil error, want failure")
 	}
 }
 

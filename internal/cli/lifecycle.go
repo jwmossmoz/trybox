@@ -93,18 +93,23 @@ func stop(ctx context.Context, args []string) error {
 }
 
 func destroy(ctx context.Context, args []string) error {
-	fs, opts := commandFlags("destroy", flagSpec{Target: true, Repo: true, JSON: true})
+	fs, opts := commandFlags("destroy", flagSpec{JSON: true})
 	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
-	if len(fs.Args()) != 0 {
-		return fmt.Errorf("usage: trybox destroy [--target name] [--repo path] [--json]")
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: trybox destroy [<workspace-id>] [--json]")
+	}
+	workspaceID := ""
+	if len(rest) == 1 {
+		workspaceID = rest[0]
 	}
 	store, config, err := loadStoreConfig()
 	if err != nil {
 		return err
 	}
-	workspace, selection, err := workspaceForDestroy(opts, store, config)
+	workspace, selection, err := workspaceForDestroy(workspaceID, store, config)
 	if err != nil {
 		return err
 	}

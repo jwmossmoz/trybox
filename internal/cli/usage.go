@@ -30,10 +30,11 @@ func commandUsage(name string) string {
 		"destroy": `trybox destroy: delete only the selected workspace VM
 
 Usage:
-  trybox destroy [--target name] [--repo path] [--json]
+  trybox destroy [<workspace-id>] [--json]
 
 Notes:
-  Without --target or --repo, destroys the configured default workspace VM.
+  Without an id, destroys the configured default workspace VM.
+  Use trybox workspace list to see available workspace ids.
   Does not delete the host checkout, run logs, or workspace metadata.
 `,
 		"doctor": `trybox doctor: check host tools and the selected target image
@@ -108,9 +109,15 @@ Notes:
 		"workspace": `trybox workspace: manage the default workspace
 
 Usage:
+  trybox workspace list [--json]
   trybox workspace show [--json]
   trybox workspace unset [--json]
   trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+`,
+		"workspace list": `trybox workspace list: list all known workspaces
+
+Usage:
+  trybox workspace list [--json]
 `,
 		"workspace unset": `trybox workspace unset: unset the default workspace pointer
 
@@ -135,7 +142,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `trybox: clean local VM workspaces for source debugging
 
 Usage:
-  trybox destroy [--target name] [--repo path] [--json]
+  trybox destroy [<workspace-id>] [--json]
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
   trybox history [--limit n] [--json]
@@ -148,6 +155,7 @@ Usage:
   trybox target list [--json]
   trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
   trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
+  trybox workspace list [--json]
   trybox workspace show [--json]
   trybox workspace unset [--json]
   trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]

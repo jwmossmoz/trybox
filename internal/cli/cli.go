@@ -49,7 +49,7 @@ func Run(ctx context.Context, args []string) error {
 	case "sync-plan":
 		return syncPlan(ctx, args[1:])
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		return fmt.Errorf("unknown command %q; run trybox --help for usage", args[0])
 	}
 }
 
