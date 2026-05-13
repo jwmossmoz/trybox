@@ -12,6 +12,7 @@ type options struct {
 	CPU       int
 	MemoryMB  int
 	DiskGB    int
+	Profile   string
 }
 
 type syncResult struct {
@@ -25,13 +26,24 @@ type syncResult struct {
 	Duration    string   `json:"duration"`
 }
 
+type fetchResult struct {
+	WorkspaceID string `json:"workspace_id"`
+	Target      string `json:"target"`
+	URL         string `json:"url"`
+	Destination string `json:"destination"`
+}
+
 type targetView struct {
-	Name     string `json:"name"`
-	OS       string `json:"os"`
-	Version  string `json:"version"`
-	Arch     string `json:"arch"`
-	Runnable bool   `json:"runnable"`
-	Notes    string `json:"notes,omitempty"`
+	Name         string `json:"name"`
+	OS           string `json:"os"`
+	Version      string `json:"version"`
+	Arch         string `json:"arch"`
+	Runnable     bool   `json:"runnable"`
+	ImageName    string `json:"image_name,omitempty"`
+	SourceImage  string `json:"source_image,omitempty"`
+	ImagePresent bool   `json:"image_present"`
+	CloneCommand string `json:"clone_command,omitempty"`
+	Notes        string `json:"notes,omitempty"`
 }
 
 type workspaceView struct {

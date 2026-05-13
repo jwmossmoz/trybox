@@ -27,6 +27,11 @@ func printCommandHelp(parts []string) error {
 
 func commandUsage(name string) string {
 	usages := map[string]string{
+		"bootstrap": `trybox bootstrap: create the local target image for a target
+
+Usage:
+  trybox bootstrap [--target name] [--json]
+`,
 		"destroy": `trybox destroy: delete only the selected workspace VM
 
 Usage:
@@ -47,10 +52,23 @@ Usage:
 Usage:
   trybox events <run-id> [--json]
 `,
+		"fetch": `trybox fetch: download a URL into the guest workspace
+
+Usage:
+  trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]
+
+Notes:
+  Relative destinations are resolved under the guest work path.
+`,
 		"history": `trybox history: list recent runs
 
 Usage:
   trybox history [--limit n] [--json]
+`,
+		"info": `trybox info: print Trybox state paths and defaults
+
+Usage:
+  trybox info [--json]
 `,
 		"logs": `trybox logs: print stdout and stderr logs for a run
 
@@ -61,6 +79,19 @@ Usage:
 
 Usage:
   trybox run [--target name] [--repo path] [--json] -- <command>
+`,
+		"reset": `trybox reset: recreate the workspace VM and sync the checkout
+
+Usage:
+  trybox reset [--target name] [--repo path] [--json]
+`,
+		"shell": `trybox shell: open an interactive SSH session in the workspace VM
+
+Usage:
+  trybox shell [--target name] [--repo path] [-- <command>]
+
+Notes:
+  Without a command, opens a login shell in the guest work path.
 `,
 		"status": `trybox status: show workspace VM state
 
@@ -95,7 +126,7 @@ Usage:
 		"up": `trybox up: create and start the workspace VM
 
 Usage:
-  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
+  trybox up [--target name] [--repo path] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
 `,
 		"view": `trybox view: open the workspace desktop
 
@@ -112,7 +143,7 @@ Usage:
   trybox workspace list [--json]
   trybox workspace show [--json]
   trybox workspace unset [--json]
-  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 `,
 		"workspace list": `trybox workspace list: list all known workspaces
 
@@ -132,7 +163,7 @@ Usage:
 		"workspace use": `trybox workspace use: set the default source checkout and target
 
 Usage:
-  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 `,
 	}
 	return usages[name]
@@ -142,23 +173,28 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `trybox: clean local VM workspaces for source debugging
 
 Usage:
+  trybox bootstrap [--target name] [--json]
   trybox destroy [<workspace-id>] [--json]
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
+  trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]
   trybox history [--limit n] [--json]
+  trybox info [--json]
   trybox logs <run-id>
+  trybox reset [--target name] [--repo path] [--json]
   trybox run [--target name] [--repo path] [--json] -- <command>
+  trybox shell [--target name] [--repo path] [-- <command>]
   trybox status [--target name] [--repo path] [--json]
   trybox stop [--target name] [--repo path] [--json]
   trybox sync [--target name] [--repo path] [--json]
   trybox sync-plan [--repo path] [--limit n] [--json]
   trybox target list [--json]
-  trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
+  trybox up [--target name] [--repo path] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
   trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
   trybox workspace list [--json]
   trybox workspace show [--json]
   trybox workspace unset [--json]
-  trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 
 MVP backend:
   macOS targets via Tart.

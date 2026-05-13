@@ -22,6 +22,12 @@ func Run(ctx context.Context, args []string) error {
 		return nil
 	case "doctor":
 		return doctor(ctx, args[1:])
+	case "bootstrap":
+		return bootstrap(ctx, args[1:])
+	case "info":
+		return info(ctx, args[1:])
+	case "fetch":
+		return fetch(ctx, args[1:])
 	case "target":
 		return target(ctx, args[1:])
 	case "workspace":
@@ -40,6 +46,10 @@ func Run(ctx context.Context, args []string) error {
 		return destroy(ctx, args[1:])
 	case "run":
 		return runCommand(ctx, args[1:])
+	case "reset":
+		return reset(ctx, args[1:])
+	case "shell", "attach":
+		return shell(ctx, args[1:])
 	case "logs":
 		return logs(ctx, args[1:])
 	case "events":

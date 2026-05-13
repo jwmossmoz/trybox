@@ -94,7 +94,9 @@ Planned first-time setup:
 trybox bootstrap --target macos15-arm64
 ```
 
-Until `bootstrap` exists, create the local target image manually with Tart:
+`trybox target list` shows whether each local target image is present and, when
+missing, the exact clone command bootstrap would run. You can still create the
+local target image manually with Tart:
 
 ```sh
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
@@ -103,29 +105,44 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-ima
 ## Commands
 
 ```sh
-trybox destroy [--target name] [--repo path] [--json]
+trybox bootstrap [--target name] [--json]
+trybox destroy [<workspace-id>] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
+trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]
 trybox history [--limit n] [--json]
+trybox info [--json]
 trybox logs <run-id>
+trybox reset [--target name] [--repo path] [--json]
 trybox run [--target name] [--repo path] [--json] -- <command>
+trybox shell [--target name] [--repo path] [-- <command>]
 trybox status [--target name] [--repo path] [--json]
 trybox stop [--target name] [--repo path] [--json]
 trybox sync [--target name] [--repo path] [--json]
 trybox sync-plan [--repo path] [--limit n] [--json]
 trybox target list [--json]
-trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
+trybox up [--target name] [--repo path] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
 trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
 trybox workspace show [--json]
 trybox workspace unset [--json]
-trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 ```
 
-`trybox destroy` deletes only the selected workspace VM. Without `--target` or
-`--repo`, it selects the configured default workspace. It does not delete the
+`trybox destroy` deletes only the selected workspace VM. Without a workspace id,
+it selects the configured default workspace. It does not delete the
 host checkout, run logs, or workspace metadata. Stale runtime state on the
 workspace record (last known IP, sync fingerprint, last sync timestamp, last
 run log) is cleared so the next `trybox up` starts fresh.
+
+`--profile test` selects a smaller VM shape for short test or harness work.
+`--profile build` selects a larger source-build shape. Explicit `--cpu`,
+`--memory-mb`, and `--disk-gb` values override the selected profile.
+
+`trybox fetch --url URL --to path` downloads an artifact from inside the guest.
+Relative destinations are resolved under the guest work path.
+
+`trybox reset` deletes and recreates the selected workspace VM, then syncs the
+checkout back into the clean guest.
 
 ## Guest Paths and Shell Expansion
 
