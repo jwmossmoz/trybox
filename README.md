@@ -42,6 +42,9 @@ go build -o trybox ./cmd/trybox
 
 ## Common Flows
 
+Read the full [CLI guide](docs/cli.md) for definitions of targets,
+workspaces, workspace VMs, sync plans, runs, and every public flag.
+
 Set or inspect the default workspace:
 
 ```sh
@@ -103,7 +106,7 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-ima
 ## Commands
 
 ```sh
-trybox destroy [--target name] [--repo path] [--json]
+trybox destroy [<workspace-id>] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
@@ -116,16 +119,17 @@ trybox sync-plan [--repo path] [--limit n] [--json]
 trybox target list [--json]
 trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
 trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
+trybox workspace list [--json]
 trybox workspace show [--json]
 trybox workspace unset [--json]
 trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 ```
 
-`trybox destroy` deletes only the selected workspace VM. Without `--target` or
-`--repo`, it selects the configured default workspace. It does not delete the
-host checkout, run logs, or workspace metadata. Stale runtime state on the
-workspace record (last known IP, sync fingerprint, last sync timestamp, last
-run log) is cleared so the next `trybox up` starts fresh.
+`trybox destroy` deletes only the selected workspace VM. Without a workspace
+id, it selects the configured default workspace. It does not delete the host
+checkout, run logs, or workspace metadata. Stale runtime state on the workspace
+record (last known IP, sync fingerprint, last sync timestamp, last run log) is
+cleared so the next `trybox up` starts fresh.
 
 ## Guest Paths and Shell Expansion
 
@@ -141,6 +145,7 @@ trybox run -- bash -lc 'cd "$HOME/trybox" && ./mach --help'
 
 ## More Detail
 
+- [CLI guide](docs/cli.md)
 - [Architecture](docs/architecture.md)
 - [Image model](docs/images.md)
 - [Security model](docs/security.md)
