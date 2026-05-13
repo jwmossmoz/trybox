@@ -1,0 +1,104 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/jwmossmoz/trybox/internal/state"
+	"github.com/jwmossmoz/trybox/internal/targets"
+)
+
+func viewTarget(target targets.Target) targetView {
+	return targetView{
+		Name:     target.Name,
+		OS:       target.OS,
+		Version:  target.Version,
+		Arch:     target.Arch,
+		Runnable: target.Runnable,
+		Notes:    target.Notes,
+	}
+}
+
+func viewWorkspace(workspace state.Workspace) workspaceView {
+	return workspaceView{
+		ID:              workspace.ID,
+		Target:          workspace.Target,
+		RepoRoot:        workspace.RepoRoot,
+		VMName:          workspace.VMName,
+		CPU:             workspace.CPU,
+		MemoryMB:        workspace.MemoryMB,
+		DiskGB:          workspace.DiskGB,
+		CreatedAt:       workspace.CreatedAt,
+		UpdatedAt:       workspace.UpdatedAt,
+		LastRunLog:      workspace.LastRunLog,
+		LastKnownIP:     workspace.LastKnownIP,
+		SyncFingerprint: workspace.SyncFingerprint,
+		LastSyncAt:      workspace.LastSyncAt,
+	}
+}
+
+func viewRun(run state.Run) runView {
+	return runView{
+		ID:          run.ID,
+		WorkspaceID: run.WorkspaceID,
+		Target:      run.Target,
+		RepoRoot:    run.RepoRoot,
+		Command:     run.Command,
+		StartedAt:   run.StartedAt,
+		EndedAt:     run.EndedAt,
+		ExitCode:    run.ExitCode,
+		StdoutLog:   run.StdoutLog,
+		StderrLog:   run.StderrLog,
+		EventsLog:   run.EventsLog,
+	}
+}
+
+func writeJSON(w io.Writer, value any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(value)
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for value := n / unit; value >= unit; value /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func printWarnings(warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func suffix(detail string) string {
+	if detail == "" {
+		return ""
+	}
+	return ": " + detail
+}

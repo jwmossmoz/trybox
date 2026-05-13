@@ -38,17 +38,24 @@ trybox run -- <command>
 
 Use the configured workspace when correct. Set one when missing, wrong, or when
 VM specs need changing. Choose targets from the user request or `target list`.
+If `trybox up` reports a missing local target image before `trybox bootstrap`
+exists, tell the user to create it manually, for example:
+
+```sh
+tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
+```
 
 ## Desktop
 
 - `trybox view`: auto-login plus Tart native display.
 - `trybox view --vnc`: Tart VNC plus Apple's Screen Sharing.
 - `trybox view --vnc --no-open --json`: Tart VNC details only.
+- `trybox view --restart-display`: explicitly restart a running VM to switch display mode.
 
 ## Examples
 
 ```sh
-trybox run -- env MOZCONFIG=.trybox-smoke.mozconfig ./mach build
+trybox run -- env
 trybox view
 trybox run -- <small visible test command>
 ```

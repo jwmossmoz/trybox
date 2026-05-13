@@ -144,4 +144,7 @@ The intended large-repo sync path is intentionally simple:
 
 `trybox sync-plan --json` previews the manifest. `trybox sync --json` performs
 the current rsync path and records a fingerprint so unchanged worktrees can
-skip repeated transfers.
+skip repeated transfers. Successful syncs also store the last remote manifest
+under `~/trybox/.trybox/sync-manifest`; later syncs use it to remove files that
+were deleted, renamed, or newly excluded on the host before writing the next
+fingerprint.

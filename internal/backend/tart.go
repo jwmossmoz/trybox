@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/jwmossmoz/trybox/internal/sshx"
 	"github.com/jwmossmoz/trybox/internal/state"
@@ -104,7 +103,7 @@ func (t Tart) Start(ctx context.Context, target targets.Target, workspace state.
 	}
 	defer logFile.Close()
 
-	args := []string{"run", "--no-clipboard"}
+	args := []string{"run", "--no-clipboard", "--no-audio"}
 	if opts.VNC {
 		args = append(args, "--vnc")
 	} else if opts.Headless {
@@ -122,7 +121,6 @@ func (t Tart) Start(ctx context.Context, target targets.Target, workspace state.
 	if err := cmd.Process.Release(); err != nil {
 		return err
 	}
-	time.Sleep(2 * time.Second)
 	return nil
 }
 

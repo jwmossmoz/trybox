@@ -26,10 +26,11 @@ Prerequisites:
 ```sh
 go run ./cmd/trybox doctor
 go run ./cmd/trybox target list
+tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
 go run ./cmd/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100 ~/src/project
 go run ./cmd/trybox up
 go run ./cmd/trybox sync
-go run ./cmd/trybox run -- ./mach --version
+go run ./cmd/trybox run -- env
 ```
 
 Build a local binary when the command shape is stable enough for repeated use:
@@ -58,7 +59,7 @@ trybox sync
 Run a command and inspect logs:
 
 ```sh
-trybox run -- ./mach test browser/components/example
+trybox run -- ./build-or-test-command test
 trybox history
 trybox events <run-id>
 trybox logs <run-id>
@@ -78,7 +79,8 @@ trybox view --vnc --no-open  # Tart VNC endpoint only
 - `--json` for agent/script output on commands that return structured state.
 - Diagnostics and command stderr go to stderr.
 - Workspace defaults avoid repeating `--repo` on every command.
-- `--no-open` means no host GUI client should remain open.
+- `view --json` implies `--no-open`.
+- `--no-open` means Trybox does not open a host GUI client.
 
 ## Target Images
 
@@ -92,10 +94,16 @@ Planned first-time setup:
 trybox bootstrap --target macos15-arm64
 ```
 
+Until `bootstrap` exists, create the local target image manually with Tart:
+
+```sh
+tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
+```
+
 ## Commands
 
 ```sh
-trybox destroy [--json]
+trybox destroy [--target name] [--repo path] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
@@ -107,13 +115,14 @@ trybox sync [--target name] [--repo path] [--json]
 trybox sync-plan [--repo path] [--limit n] [--json]
 trybox target list [--json]
 trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
-trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--json]
+trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
 trybox workspace show [--json]
 trybox workspace unset [--json]
 trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
 ```
 
-`trybox destroy` deletes only the current workspace VM. It does not delete the
+`trybox destroy` deletes only the selected workspace VM. Without `--target` or
+`--repo`, it selects the configured default workspace. It does not delete the
 host checkout, run logs, or workspace metadata.
 
 ## More Detail

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type Store struct {
@@ -64,6 +67,10 @@ type Run struct {
 	EventsLog     string    `json:"events_log"`
 }
 
+type WorkspaceLock struct {
+	file *os.File
+}
+
 func DefaultStore() (Store, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -93,6 +100,10 @@ func (s Store) Init() error {
 
 func (s Store) WorkspacePath(id string) string {
 	return filepath.Join(s.WorkspacesDir, id+".json")
+}
+
+func (s Store) WorkspaceLockPath(id string) string {
+	return filepath.Join(s.WorkspacesDir, id+".lock")
 }
 
 func (s Store) ConfigPath() string {
@@ -208,6 +219,45 @@ func (s Store) AppendEvent(run Run, event string, payload any) error {
 	}
 	_, err = fmt.Fprintln(f, string(data))
 	return err
+}
+
+func (s Store) LockWorkspace(ctx context.Context, id string) (*WorkspaceLock, error) {
+	if err := os.MkdirAll(s.WorkspacesDir, 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(s.WorkspaceLockPath(id), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if err == nil {
+			return &WorkspaceLock{file: f}, nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			_ = f.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			_ = f.Close()
+			return nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func (l *WorkspaceLock) Unlock() error {
+	if l == nil || l.file == nil {
+		return nil
+	}
+	err := unix.Flock(int(l.file.Fd()), unix.LOCK_UN)
+	closeErr := l.file.Close()
+	l.file = nil
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
 
 func WorkspaceID(targetName, repoRoot string) string {
