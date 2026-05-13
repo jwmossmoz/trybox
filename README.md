@@ -40,6 +40,24 @@ go build -o trybox ./cmd/trybox
 ./trybox status
 ```
 
+## Development Checks
+
+Run the local integration check before opening a PR:
+
+```sh
+scripts/check-integration.sh
+```
+
+The default check runs `go test ./...`, builds `trybox`, and exercises the
+PR-safe CLI workflow against an isolated temporary `HOME` and disposable git
+fixture. It does not require Tart or a local target image.
+
+To include the VM-backed workflow on a host with Tart and a local target image:
+
+```sh
+TRYBOX_INTEGRATION_VM=1 scripts/check-integration.sh
+```
+
 ## Common Flows
 
 Set or inspect the default workspace:
