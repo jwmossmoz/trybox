@@ -95,7 +95,7 @@ trybox bootstrap --target macos15-arm64
 ## Commands
 
 ```sh
-trybox destroy [--target name] [--repo path]
+trybox destroy [--json]
 trybox doctor [--json]
 trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
@@ -112,6 +112,9 @@ trybox workspace clear
 trybox workspace show [--json]
 trybox workspace use [--target name] [--cpu n] [--memory-mb n] [--disk-gb n] [repo]
 ```
+
+`trybox destroy` deletes only the current workspace VM. It does not delete the
+host checkout, run logs, or workspace metadata.
 
 ## More Detail
 

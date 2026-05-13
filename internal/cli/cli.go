@@ -599,18 +599,52 @@ func stop(ctx context.Context, args []string) error {
 }
 
 func destroy(ctx context.Context, args []string) error {
-	fs, opts := baseFlags("destroy", args)
+	fs := flag.NewFlagSet("destroy", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	jsonOut := fs.Bool("json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, workspace, b, store, err := setup(opts)
+	if len(fs.Args()) != 0 {
+		return fmt.Errorf("usage: trybox destroy [--json]")
+	}
+	store, config, err := loadStoreConfig()
 	if err != nil {
 		return err
 	}
+	if config.DefaultWorkspaceID == "" {
+		return fmt.Errorf("no default workspace is configured; run trybox workspace use <repo>")
+	}
+	workspace, err := store.LoadWorkspace(config.DefaultWorkspaceID)
+	if err != nil {
+		return fmt.Errorf("load default workspace %q: %w", config.DefaultWorkspaceID, err)
+	}
+	target, err := targets.Get(workspace.Target)
+	if err != nil {
+		return err
+	}
+	b := backendFor(target)
+	vmExisted := b.Exists(ctx, workspace.VMName)
 	if err := b.Destroy(ctx, workspace); err != nil {
 		return err
 	}
-	return store.RemoveWorkspace(workspace.ID)
+	out := map[string]any{
+		"workspace":               viewWorkspace(workspace),
+		"vm_name":                 workspace.VMName,
+		"vm_deleted":              vmExisted,
+		"host_checkout_untouched": workspace.RepoRoot,
+		"workspace_state_kept":    true,
+	}
+	if *jsonOut {
+		return writeJSON(os.Stdout, out)
+	}
+	if vmExisted {
+		fmt.Printf("deleted VM:             %s\n", workspace.VMName)
+	} else {
+		fmt.Printf("VM already absent:      %s\n", workspace.VMName)
+	}
+	fmt.Printf("host checkout untouched: %s\nworkspace state kept:    %s\n", workspace.RepoRoot, workspace.ID)
+	return nil
 }
 
 func syncWorkspace(ctx context.Context, args []string) error {
@@ -1304,7 +1338,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `trybox: clean local Mozilla product debugging workspaces
 
 Usage:
-  trybox destroy [--target name] [--repo path]
+  trybox destroy [--json]
   trybox doctor [--json]
   trybox events <run-id> [--json]
   trybox history [--limit n] [--json]
