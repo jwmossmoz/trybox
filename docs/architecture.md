@@ -43,6 +43,75 @@ trybox CLI
     future taskcluster/treeherder/task-debugger import
 ```
 
+## Current Implementation Diagram
+
+```mermaid
+flowchart LR
+    actor["human or agent"] --> cli["trybox CLI<br/>cmd/trybox"]
+
+    cli --> commands{"command"}
+    commands --> doctor["doctor"]
+    commands --> targetsCmd["target list"]
+    commands --> up["up"]
+    commands --> syncCmd["sync / sync-plan"]
+    commands --> runCmd["run"]
+    commands --> inspect["status / history / logs / events"]
+
+    subgraph control["local control plane"]
+        registry["target registry<br/>internal/targets"]
+        coordinator["workspace and run coordinator<br/>internal/cli"]
+        store["state store<br/>internal/state"]
+        planner["Git manifest planner<br/>internal/workspace"]
+        backendAPI["backend interface<br/>internal/backend"]
+    end
+
+    cli --> coordinator
+    coordinator --> registry
+    coordinator --> store
+    coordinator --> planner
+    coordinator --> backendAPI
+
+    subgraph state["durable local state"]
+        claims["claims/*.json<br/>workspace metadata"]
+        runs["runs/run_*/<br/>meta.json stdout.log stderr.log events.ndjson"]
+        keys["keys/<claim>/id_ed25519"]
+        vmLogs["logs/<vm>.log"]
+    end
+
+    store --> claims
+    store --> runs
+    store --> keys
+    store --> vmLogs
+
+    subgraph source["host Firefox checkout"]
+        git["git ls-files<br/>tracked + nonignored files"]
+        manifest["NUL manifest<br/>fingerprint"]
+    end
+
+    planner --> git
+    git --> manifest
+    manifest --> rsync["rsync over SSH"]
+
+    backendAPI --> tart["Tart backend<br/>internal/backend/tart.go"]
+    tart --> tartCLI["tart CLI<br/>clone / set / run / ip / stop / delete"]
+    tartCLI --> vm["clean macOS VM<br/>target image clone"]
+
+    coordinator --> sshExec["SSH command execution<br/>internal/sshx"]
+    sshExec --> vm
+    rsync --> vm
+
+    subgraph guest["guest workspace"]
+        workdir["~/trybox/work/firefox"]
+        fingerprint[".trybox/sync-fingerprint"]
+        command["requested command<br/>for example ./mach ..."]
+    end
+
+    vm --> workdir
+    workdir --> fingerprint
+    workdir --> command
+    command --> runs
+```
+
 ## State
 
 State lives under the user config directory:
