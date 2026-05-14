@@ -13,8 +13,10 @@ MEMORY_MB="${TRYBOX_IMAGE_MEMORY_MB:-16384}"
 DISK="${TRYBOX_IMAGE_DISK_GB:-200}"
 DISPLAY="${TRYBOX_IMAGE_DISPLAY:-1920x1200}"
 REPLACE=0
-DELETE_ON_FAILURE="${TRYBOX_DELETE_BUILD_VM_ON_FAILURE:-0}"
+DELETE_ON_FAILURE="${TRYBOX_DELETE_BUILD_VM_ON_FAILURE:-1}"
 HEADLESS="${TRYBOX_IMAGE_HEADLESS:-false}"
+IPSW_CACHE_DIR="${TRYBOX_IPSW_CACHE_DIR:-$HOME/Library/Caches/trybox/ipsw}"
+PREFETCH_ONLY=0
 
 usage() {
   cat <<'EOF'
@@ -33,13 +35,17 @@ Options:
   --display SIZE       Display size. Default: 1920x1200
   --headless           Hide the VM window while Packer drives Setup Assistant.
   --replace            Replace the existing local target image after a good build.
-  --delete-on-failure  Delete the temporary build VM if Packer fails.
+  --keep-on-failure    Keep the temporary build VM if Packer fails (default deletes it).
+  --delete-on-failure  Force-delete the temporary build VM if Packer fails (now the default).
+  --ipsw-cache DIR     Cache directory for downloaded IPSWs. Default: ~/Library/Caches/trybox/ipsw
+  --prefetch-only      Download the IPSW into the cache and exit without building.
   -h, --help           Show this help.
 
 Environment variables mirror the option names:
 TRYBOX_TARGET, TRYBOX_MACOS_IPSW, TRYBOX_IMAGE_NAME, TRYBOX_BUILD_VM,
 TRYBOX_IMAGE_CPU, TRYBOX_IMAGE_MEMORY_MB, TRYBOX_IMAGE_DISK_GB,
-TRYBOX_IMAGE_DISPLAY, TRYBOX_IMAGE_HEADLESS.
+TRYBOX_IMAGE_DISPLAY, TRYBOX_IMAGE_HEADLESS, TRYBOX_IPSW_CACHE_DIR,
+TRYBOX_DELETE_BUILD_VM_ON_FAILURE.
 EOF
 }
 
@@ -76,6 +82,30 @@ need() {
 
 vm_exists() {
   tart list --quiet | grep -Fxq "$1"
+}
+
+is_url() {
+  [[ "$1" =~ ^https?:// ]]
+}
+
+prefetch_ipsw() {
+  local url="$1"
+  local cache_dir="$2"
+  local filename
+  filename="$(basename "${url%%\?*}")"
+  local dest="$cache_dir/$filename"
+
+  mkdir -p "$cache_dir"
+
+  echo "prefetching IPSW: $url" >&2
+  echo "  -> $dest" >&2
+  curl -fL --retry 20 --retry-delay 5 --retry-all-errors \
+    --connect-timeout 30 --speed-time 60 --speed-limit 1024 \
+    -C - --progress-bar \
+    -o "$dest" \
+    "$url" >&2
+
+  echo "$dest"
 }
 
 cleanup() {
@@ -135,6 +165,18 @@ while (($#)); do
       DELETE_ON_FAILURE=1
       shift
       ;;
+    --keep-on-failure)
+      DELETE_ON_FAILURE=0
+      shift
+      ;;
+    --ipsw-cache)
+      IPSW_CACHE_DIR="${2:?missing value for --ipsw-cache}"
+      shift 2
+      ;;
+    --prefetch-only)
+      PREFETCH_ONLY=1
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -145,8 +187,12 @@ while (($#)); do
   esac
 done
 
-need packer
 need tart
+need curl
+
+if ((PREFETCH_ONLY == 0)); then
+  need packer
+fi
 
 [[ -d "$PACKER_DIR" ]] || die "Packer directory does not exist: $PACKER_DIR"
 
@@ -156,6 +202,17 @@ fi
 
 if [[ -z "$IPSW" ]]; then
   IPSW="$(default_ipsw_for_target "$TARGET")" || die "no default IPSW for target $TARGET; pass --ipsw"
+fi
+
+if is_url "$IPSW"; then
+  IPSW="$(prefetch_ipsw "$IPSW" "$IPSW_CACHE_DIR")"
+elif [[ ! -f "$IPSW" ]]; then
+  die "IPSW file not found: $IPSW"
+fi
+
+if ((PREFETCH_ONLY == 1)); then
+  echo "prefetched IPSW: $IPSW"
+  exit 0
 fi
 
 if [[ -z "$BUILD_VM" ]]; then
