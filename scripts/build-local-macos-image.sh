@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKER_DIR="$ROOT/images/macos/packer"
+PACKER_DIR="$ROOT/ci/macos/packer"
 
 TARGET="${TRYBOX_TARGET:-macos15-arm64}"
 IPSW="${TRYBOX_MACOS_IPSW:-}"

@@ -117,9 +117,9 @@ scripts/build-local-macos-image.sh --replace
 ```
 
 The script runs `packer init`, `packer validate`, and `packer build` against
-`images/macos/packer/trybox.pkr.hcl`. The template creates a fresh Tart VM from a
+`ci/macos/packer/trybox.pkr.hcl`. The template creates a fresh Tart VM from a
 macOS restore image with `from_ipsw`, drives Setup Assistant with a boot command,
-runs the scripts in `images/macos/provision.d`, stops the VM, and the wrapper
+runs the scripts in `ci/macos/provision.d`, stops the VM, and the wrapper
 renames a successful temporary VM to Trybox's local target image name, such as
 `trybox-macos15-arm64-image`.
 
