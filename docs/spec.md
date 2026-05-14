@@ -14,7 +14,6 @@ Trybox creates clean local VM workspaces for source debugging.
 - JSON output for agent workflows.
 - Manifest-based sync for tracked files, repository metadata, and nonignored
   local files.
-- Sync planning before large transfers.
 - Local target names instead of backend internals.
 
 ## Phase 1.5

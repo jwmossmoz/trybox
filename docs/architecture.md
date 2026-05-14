@@ -31,7 +31,7 @@ trybox CLI
   target registry
   state store
   run coordinator
-  sync planner
+  source sync
   backend interface
     tart backend
     future windows backend
@@ -49,7 +49,7 @@ flowchart TD
 
     cli --> targets["Target catalog<br/>macOS version + architecture"]
     cli --> lifecycle["Workspace lifecycle<br/>up / status / stop / destroy"]
-    cli --> sync["Source sync<br/>sync-plan / sync"]
+    cli --> sync["Source sync<br/>sync"]
     cli --> run["Command execution<br/>run"]
 
     targets --> backend["VM backend<br/>Tart today"]
@@ -142,9 +142,8 @@ The intended large-repo sync path is intentionally simple:
 3. Warn on very large transfers instead of inventing a more complex source
    overlay too early.
 
-`trybox sync-plan --json` previews the manifest. `trybox sync --json` performs
-the current rsync path and records a fingerprint so unchanged worktrees can
-skip repeated transfers. Successful syncs also store the last remote manifest
-under `~/trybox/.trybox/sync-manifest`; later syncs use it to remove files that
-were deleted, renamed, or newly excluded on the host before writing the next
-fingerprint.
+`trybox sync --json` performs the current rsync path and records a fingerprint
+so unchanged worktrees can skip repeated transfers. Successful syncs also store
+the last remote manifest under `~/trybox/.trybox/sync-manifest`; later syncs use
+it to remove files that were deleted, renamed, or newly excluded on the host
+before writing the next fingerprint.

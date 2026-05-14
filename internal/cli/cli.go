@@ -62,8 +62,6 @@ func Run(ctx context.Context, args []string) error {
 		return events(ctx, args[1:])
 	case "history":
 		return history(ctx, args[1:])
-	case "sync-plan":
-		return syncPlan(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q; run trybox --help for usage", args[0])
 	}

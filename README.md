@@ -63,7 +63,7 @@ TRYBOX_INTEGRATION_VM=1 scripts/check-integration.sh
 ## Common Flows
 
 Read the full [CLI guide](docs/cli.md) for definitions of targets,
-workspaces, workspace VMs, sync plans, runs, and every public flag.
+workspaces, workspace VMs, runs, and every public flag.
 
 Set or inspect the default workspace:
 
@@ -72,10 +72,9 @@ trybox workspace show
 trybox workspace use --target macos15-arm64
 ```
 
-Plan and sync a dirty checkout:
+Sync a dirty checkout:
 
 ```sh
-trybox sync-plan
 trybox sync
 ```
 
@@ -146,7 +145,6 @@ trybox snapshot delete <name> [--target name] [--json]
 trybox status [--target name] [--json]
 trybox stop [--target name] [--json]
 trybox sync [--target name] [--json]
-trybox sync-plan [--limit n] [--json]
 trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
 trybox target list [--json]
 trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
