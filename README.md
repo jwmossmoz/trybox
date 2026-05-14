@@ -134,7 +134,9 @@ trybox status [--target name] [--repo path] [--json]
 trybox stop [--target name] [--repo path] [--json]
 trybox sync [--target name] [--repo path] [--json]
 trybox sync-plan [--repo path] [--limit n] [--json]
+trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
 trybox target list [--json]
+trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
 trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
 trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
 trybox workspace list [--json]
@@ -148,6 +150,17 @@ id, it selects the configured default workspace. It does not delete the host
 checkout, run logs, or workspace metadata. Stale runtime state on the workspace
 record (last known IP, sync fingerprint, last sync timestamp, last run log) is
 cleared so the next `trybox up` starts fresh.
+
+`trybox task` fetches a Taskcluster task definition from `--root-url` (or
+`TASKCLUSTER_ROOT_URL`) and turns it into a local replay plan. The default mode
+prints the resolved command, environment count, dependencies, artifacts, and
+target mapping. Add `run` to sync the selected workspace and execute the task
+command, or `shell` to open an SSH shell with the task environment exported.
+
+`trybox try <revision-or-url>` checks whether the selected host checkout is at
+the requested revision. With `task <task-id>`, it combines the source check with
+the Taskcluster replay plan and refuses `run`/`shell` when the checkout revision
+does not match.
 
 ## Guest Paths and Shell Expansion
 

@@ -30,6 +30,10 @@ func runCommand(ctx context.Context, args []string) error {
 	if len(command) == 0 {
 		return fmt.Errorf("usage: trybox run [options] -- <command>")
 	}
+	return runWorkspaceCommand(ctx, opts, command, nil)
+}
+
+func runWorkspaceCommand(ctx context.Context, opts *options, command []string, extra map[string]any) error {
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
@@ -39,7 +43,11 @@ func runCommand(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		_ = store.AppendEvent(run, "run_created", map[string]any{"command": command})
+		created := map[string]any{"command": command}
+		for key, value := range extra {
+			created[key] = value
+		}
+		_ = store.AppendEvent(run, "run_created", created)
 		if err := store.SaveRun(run); err != nil {
 			return err
 		}

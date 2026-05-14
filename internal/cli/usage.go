@@ -87,10 +87,26 @@ Usage:
 Usage:
   trybox sync-plan [--repo path] [--limit n] [--json]
 `,
+		"task": `trybox task: inspect or replay a Taskcluster task
+
+Usage:
+  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
+
+Notes:
+  Without run or shell, prints the replay plan. --root-url can also come from TASKCLUSTER_ROOT_URL.
+`,
 		"target": `trybox target: inspect built-in target names
 
 Usage:
   trybox target list [--json]
+`,
+		"try": `trybox try: inspect a source revision and optionally replay a task
+
+Usage:
+  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
+
+Notes:
+  Replay run/shell requires the host checkout HEAD to match the requested revision.
 `,
 		"target list": `trybox target list: list built-in target names
 
@@ -157,7 +173,9 @@ Usage:
   trybox stop [--target name] [--repo path] [--json]
   trybox sync [--target name] [--repo path] [--json]
   trybox sync-plan [--repo path] [--limit n] [--json]
+  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
   trybox target list [--json]
+  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
   trybox up [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
   trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
   trybox workspace list [--json]
