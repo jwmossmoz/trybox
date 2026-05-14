@@ -87,3 +87,14 @@ starts Tart VNC, and destroys the test VM:
 
 Override the source checkout with `TRYBOX_REPO` when you want to run the check
 against a specific repository.
+
+For the heavier Firefox OS integration path, use:
+
+```sh
+./ci/check-firefox-os-integration.sh
+```
+
+That script runs the Firefox build plus the `os_integration` Marionette,
+Mochitest, and xpcshell suites through Trybox. It defaults to
+`TRYBOX_REPO`, `FIREFOX_REPO`, or `~/firefox`, and `TRYBOX_TARGET` or
+`macos15-arm64`.
