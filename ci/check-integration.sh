@@ -111,6 +111,17 @@ if [[ "${TRYBOX_SKIP_VM:-}" != "1" ]]; then
   trybox status --json >"$TMP/vm-status.json"
   jq empty "$TMP/vm-status.json"
 
+  view_pause="${TRYBOX_VIEW_PAUSE_SECONDS:-60}"
+
+  printf 'integration: opening Tart native window\n' >&2
+  trybox view | tee "$TMP/native-view.txt"
+  grep -q '^display:   tart-native$' "$TMP/native-view.txt"
+  grep -q '^client:    tart$' "$TMP/native-view.txt"
+  grep -q '^open:      Tart native window launched$' "$TMP/native-view.txt"
+
+  printf 'integration: leaving Tart native window open for %s seconds\n' "$view_pause" >&2
+  sleep "$view_pause"
+
   printf 'integration: opening Tart VNC endpoint\n' >&2
   trybox view --vnc | tee "$TMP/vnc-view.txt"
   grep -q '^display:   tart-vnc$' "$TMP/vnc-view.txt"
@@ -118,7 +129,6 @@ if [[ "${TRYBOX_SKIP_VM:-}" != "1" ]]; then
   grep -q '^url:       vnc://' "$TMP/vnc-view.txt"
   grep -q '^open:      skipped$' "$TMP/vnc-view.txt"
 
-  view_pause="${TRYBOX_VIEW_PAUSE_SECONDS:-60}"
   printf 'integration: leaving VNC endpoint running for %s seconds\n' "$view_pause" >&2
   sleep "$view_pause"
 
