@@ -91,12 +91,13 @@ if [[ "${TRYBOX_SKIP_VM:-}" != "1" ]]; then
   trybox status --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/vm-status.json"
   jq empty "$TMP/vm-status.json"
 
-  trybox view --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --vnc --json >"$TMP/vnc-view.json"
-  jq empty "$TMP/vnc-view.json"
-  jq -e '.display == "tart-vnc" and .client == "none" and (.url | startswith("vnc://"))' "$TMP/vnc-view.json" >/dev/null
+  trybox view --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --vnc | tee "$TMP/vnc-view.txt"
+  grep -q '^display:   tart-vnc$' "$TMP/vnc-view.txt"
+  grep -q '^client:    none$' "$TMP/vnc-view.txt"
+  grep -q '^url:       vnc://' "$TMP/vnc-view.txt"
+  grep -q '^open:      skipped$' "$TMP/vnc-view.txt"
 
-  trybox view --target macos15-arm64 --repo "$FIREFOX_REPO_USED"
-  sleep "${TRYBOX_VIEW_PAUSE_SECONDS:-5}"
+  sleep "${TRYBOX_VIEW_PAUSE_SECONDS:-60}"
 
   trybox destroy --target macos15-arm64 --repo "$FIREFOX_REPO_USED"
 fi
