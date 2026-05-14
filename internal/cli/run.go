@@ -108,15 +108,57 @@ func logs(ctx context.Context, args []string) error {
 		_ = ctx
 		return nil
 	}
-	if len(args) != 1 {
-		return fmt.Errorf("usage: trybox logs <run-id>")
+	runID, opts, err := parseLogsArgs(args)
+	if err != nil {
+		return err
+	}
+	if opts.FromEnd && !opts.Follow {
+		return fmt.Errorf("--from-end requires --follow")
 	}
 	store, err := state.DefaultStore()
 	if err != nil {
 		return err
 	}
+	if opts.Follow {
+		return followRunLogs(ctx, os.Stdout, store, runID, logFollowOptions{FromEnd: opts.FromEnd})
+	}
+	return printRunLogsOnce(os.Stdout, store, runID)
+}
+
+type logsOptions struct {
+	Follow  bool
+	FromEnd bool
+}
+
+type logFollowOptions struct {
+	FromEnd bool
+}
+
+func parseLogsArgs(args []string) (string, logsOptions, error) {
+	var opts logsOptions
+	runID := ""
+	for _, arg := range args {
+		switch arg {
+		case "--follow", "-f":
+			opts.Follow = true
+		case "--from-end":
+			opts.FromEnd = true
+		default:
+			if strings.HasPrefix(arg, "-") || runID != "" {
+				return "", logsOptions{}, fmt.Errorf("usage: trybox logs <run-id> [--follow|-f] [--from-end]")
+			}
+			runID = arg
+		}
+	}
+	if runID == "" {
+		return "", logsOptions{}, fmt.Errorf("usage: trybox logs <run-id> [--follow|-f] [--from-end]")
+	}
+	return runID, opts, nil
+}
+
+func printRunLogsOnce(w io.Writer, store state.Store, runID string) error {
 	for _, name := range []string{"stdout.log", "stderr.log"} {
-		path := filepath.Join(store.RunDir(args[0]), name)
+		path := filepath.Join(store.RunDir(runID), name)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -127,12 +169,168 @@ func logs(ctx context.Context, args []string) error {
 		if len(data) == 0 {
 			continue
 		}
-		if _, err := os.Stdout.Write(data); err != nil {
+		if _, err := w.Write(data); err != nil {
 			return err
 		}
 	}
-	_ = ctx
 	return nil
+}
+
+func followRunLogs(ctx context.Context, w io.Writer, store state.Store, runID string, opts logFollowOptions) error {
+	if _, err := loadRun(store, runID); err != nil {
+		return fmt.Errorf("load run %q: %w", runID, err)
+	}
+	stdoutOffset := int64(-1)
+	stderrOffset := int64(-1)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, opts.FromEnd); err != nil {
+			return err
+		}
+		if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, opts.FromEnd); err != nil {
+			return err
+		}
+		completion, err := runCompletion(store, runID)
+		if err != nil {
+			return err
+		}
+		if completion.Done {
+			if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, false); err != nil {
+				return err
+			}
+			if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, false); err != nil {
+				return err
+			}
+			if completion.ExitCode != 0 {
+				return exitError{Code: normalizedExitCode(completion.ExitCode)}
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			_ = copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, false)
+			_ = copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, false)
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func copyAvailableLog(w io.Writer, path string, offset *int64, fromEnd bool) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if *offset < 0 {
+		if fromEnd {
+			*offset = info.Size()
+			return nil
+		}
+		*offset = 0
+	}
+	if info.Size() < *offset {
+		*offset = 0
+	}
+	if info.Size() == *offset {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Seek(*offset, io.SeekStart); err != nil {
+		return err
+	}
+	n, err := io.Copy(w, file)
+	*offset += n
+	return err
+}
+
+type runCompletionState struct {
+	Done     bool
+	ExitCode int
+}
+
+func runCompletion(store state.Store, runID string) (runCompletionState, error) {
+	run, err := loadRun(store, runID)
+	if err != nil {
+		return runCompletionState{}, err
+	}
+	if !run.EndedAt.IsZero() {
+		return runCompletionState{Done: true, ExitCode: run.ExitCode}, nil
+	}
+	exitCode, ok, err := commandFinishedExitCode(run.EventsLog)
+	if err != nil {
+		return runCompletionState{}, err
+	}
+	if ok {
+		return runCompletionState{Done: true, ExitCode: exitCode}, nil
+	}
+	return runCompletionState{}, nil
+}
+
+func loadRun(store state.Store, runID string) (state.Run, error) {
+	data, err := os.ReadFile(filepath.Join(store.RunDir(runID), "meta.json"))
+	if err != nil {
+		return state.Run{}, err
+	}
+	var run state.Run
+	if err := json.Unmarshal(data, &run); err != nil {
+		return state.Run{}, err
+	}
+	return run, nil
+}
+
+func commandFinishedExitCode(path string) (int, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		var event struct {
+			Event   string         `json:"event"`
+			Payload map[string]any `json:"payload"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return 0, false, err
+		}
+		if event.Event != "command_finished" {
+			continue
+		}
+		value, ok := event.Payload["exit_code"]
+		if !ok {
+			return 0, true, nil
+		}
+		switch value := value.(type) {
+		case float64:
+			return int(value), true, nil
+		case int:
+			return value, true, nil
+		default:
+			return 0, false, fmt.Errorf("command_finished exit_code has unexpected type %T", value)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, false, err
+	}
+	return 0, false, nil
+}
+
+func normalizedExitCode(code int) int {
+	if code <= 0 {
+		return 1
+	}
+	return code
 }
 
 func events(ctx context.Context, args []string) error {

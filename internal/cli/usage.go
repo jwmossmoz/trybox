@@ -55,7 +55,12 @@ Usage:
 		"logs": `trybox logs: print stdout and stderr logs for a run
 
 Usage:
-  trybox logs <run-id>
+  trybox logs <run-id> [--follow|-f] [--from-end]
+
+Notes:
+  --follow keeps printing new log bytes until the run finishes, then exits with
+  the run's recorded exit code. --from-end starts following at the end of
+  existing logs and requires --follow.
 `,
 		"run": `trybox run: sync the workspace and run a command in the guest
 
@@ -146,7 +151,7 @@ Usage:
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
   trybox history [--limit n] [--json]
-  trybox logs <run-id>
+  trybox logs <run-id> [--follow|-f] [--from-end]
   trybox run [--target name] [--repo path] [--json] -- <command>
   trybox status [--target name] [--repo path] [--json]
   trybox stop [--target name] [--repo path] [--json]

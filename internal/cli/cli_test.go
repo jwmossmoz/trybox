@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,6 +91,97 @@ func TestDeleteChunkSplitsLargeCommands(t *testing.T) {
 	}
 }
 
+func TestParseLogsArgsAllowsFlagsBeforeOrAfterRunID(t *testing.T) {
+	runID, opts, err := parseLogsArgs([]string{"run_1", "--follow", "--from-end"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runID != "run_1" || !opts.Follow || !opts.FromEnd {
+		t.Fatalf("parseLogsArgs(after) = %q %+v, want follow/from-end", runID, opts)
+	}
+	runID, opts, err = parseLogsArgs([]string{"-f", "run_2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runID != "run_2" || !opts.Follow || opts.FromEnd {
+		t.Fatalf("parseLogsArgs(before) = %q %+v, want follow only", runID, opts)
+	}
+}
+
+func TestFollowRunLogsCompletedReturnsExitCode(t *testing.T) {
+	store := testStore(t)
+	run := testRun(t, store, "run_follow_completed")
+	run.EndedAt = time.Now().UTC()
+	run.ExitCode = 7
+	if err := store.SaveRun(run); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, run.StdoutLog, "stdout\n")
+	writeFile(t, run.StderrLog, "stderr\n")
+
+	var out bytes.Buffer
+	err := followRunLogs(context.Background(), &out, store, run.ID, logFollowOptions{})
+	var exit exitError
+	if !errors.As(err, &exit) || exit.Code != 7 {
+		t.Fatalf("followRunLogs() error = %v, want exit 7", err)
+	}
+	if got, want := out.String(), "stdout\nstderr\n"; got != want {
+		t.Fatalf("followRunLogs() output = %q, want %q", got, want)
+	}
+}
+
+func TestFollowRunLogsUsesCommandFinishedEvent(t *testing.T) {
+	store := testStore(t)
+	run := testRun(t, store, "run_follow_event")
+	if err := store.SaveRun(run); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, run.StdoutLog, "ready\n")
+	if err := store.AppendEvent(run, "command_finished", map[string]any{"exit_code": 3}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	err := followRunLogs(context.Background(), &out, store, run.ID, logFollowOptions{})
+	var exit exitError
+	if !errors.As(err, &exit) || exit.Code != 3 {
+		t.Fatalf("followRunLogs() error = %v, want exit 3", err)
+	}
+	if got, want := out.String(), "ready\n"; got != want {
+		t.Fatalf("followRunLogs() output = %q, want %q", got, want)
+	}
+}
+
+func TestCopyAvailableLogFromEnd(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stdout.log")
+	writeFile(t, path, "old\n")
+	offset := int64(-1)
+	var out bytes.Buffer
+	if err := copyAvailableLog(&out, path, &offset, true); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("copyAvailableLog(fromEnd) output = %q, want empty", out.String())
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("new\n"); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyAvailableLog(&out, path, &offset, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), "new\n"; got != want {
+		t.Fatalf("copyAvailableLog() output = %q, want %q", got, want)
+	}
+}
+
 func testStore(t *testing.T) state.Store {
 	t.Helper()
 	root := t.TempDir()
@@ -101,6 +196,28 @@ func testStore(t *testing.T) state.Store {
 		t.Fatal(err)
 	}
 	return store
+}
+
+func testRun(t *testing.T, store state.Store, id string) state.Run {
+	t.Helper()
+	dir := store.RunDir(id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return state.Run{
+		SchemaVersion: 1,
+		ID:            id,
+		WorkspaceID:   "workspace_test",
+		Target:        "macos15-arm64",
+		VMName:        "trybox-ws-test",
+		RepoRoot:      t.TempDir(),
+		Command:       []string{"echo", "test"},
+		StartedAt:     time.Now().UTC(),
+		ExitCode:      -1,
+		StdoutLog:     filepath.Join(dir, "stdout.log"),
+		StderrLog:     filepath.Join(dir, "stderr.log"),
+		EventsLog:     filepath.Join(dir, "events.ndjson"),
+	}
 }
 
 func testWorkspace(target targets.Target, repo string) state.Workspace {
@@ -126,4 +243,14 @@ func canonicalTestPath(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return canonical
+}
+
+func writeFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
