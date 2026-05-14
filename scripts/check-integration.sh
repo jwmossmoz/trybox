@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 REAL_HOME="${HOME:-}"
 TRYBOX_HOME="$TMP/home"
 TRYBOX_BIN="$TMP/bin/trybox"
-VM_WORKSPACE_ID=""
+VM_WORKSPACE_IDS=()
 
 fail() {
   printf 'error: %s\n' "$*" >&2
@@ -14,8 +14,11 @@ fail() {
 }
 
 cleanup() {
-  if [[ -n "$VM_WORKSPACE_ID" && "${TRYBOX_INTEGRATION_VM:-}" == "1" ]]; then
-    HOME="$TRYBOX_HOME" "$TRYBOX_BIN" destroy "$VM_WORKSPACE_ID" --json >/dev/null 2>&1 || true
+  local workspace_id
+  if [[ ${#VM_WORKSPACE_IDS[@]} -gt 0 ]]; then
+    for workspace_id in "${VM_WORKSPACE_IDS[@]}"; do
+      HOME="$TRYBOX_HOME" "$TRYBOX_BIN" destroy "$workspace_id" --json >/dev/null 2>&1 || true
+    done
   fi
   chmod -R u+w "$TMP" 2>/dev/null || true
   rm -rf "$TMP"
@@ -76,6 +79,11 @@ run_json() {
   printf '%s\n' "$out"
 }
 
+require_vm_prereqs() {
+  command -v tart >/dev/null 2>&1 || fail "tart not found in PATH"
+  tart list 2>/dev/null | grep -q 'trybox-macos15-arm64-image' || fail "trybox-macos15-arm64-image is missing; run: trybox bootstrap --target macos15-arm64"
+}
+
 create_fixture_repo() {
   local repo="$1"
   mkdir -p "$repo"
@@ -109,13 +117,17 @@ run_vm_mode() {
 
   local fixture="$1"
   local workspace_json
+  local workspace_id
   pushd "$fixture" >/dev/null
   workspace_json="$(run_json vm-workspace-use workspace use --target macos15-arm64 --json)"
-  VM_WORKSPACE_ID="$(json_get "$workspace_json" "data['workspace']['id']")"
+  workspace_id="$(json_get "$workspace_json" "data['workspace']['id']")"
+  VM_WORKSPACE_IDS+=("$workspace_id")
 
   run_json vm-doctor doctor --target macos15-arm64 --json >/dev/null
   run_json vm-up up --json >/dev/null
+  run_json vm-status-running status --json >/dev/null
   run_json vm-sync sync --json >/dev/null
+  run_json vm-fetch fetch --url file:///etc/hosts --to .trybox/etc-hosts --json >/dev/null
 
   local run_json_path
   local run_id
@@ -123,11 +135,63 @@ run_vm_mode() {
   run_id="$(json_get "$run_json_path" "data['id']")"
   run_trybox logs "$run_id" >"$TMP/vm-logs.txt"
   grep -q 'vm-ok' "$TMP/vm-logs.txt"
+  run_trybox logs "$run_id" --follow >"$TMP/vm-logs-follow.txt"
+  grep -q 'vm-ok' "$TMP/vm-logs-follow.txt"
   run_json vm-events events "$run_id" --json >/dev/null
   run_json vm-history history --limit 5 --json >/dev/null
+  run_json vm-snapshot-save snapshot save fixture-smoke --json >/dev/null
+  run_json vm-snapshot-list snapshot list --json >/dev/null
+  run_json vm-snapshot-restore snapshot restore fixture-smoke --json >/dev/null
+  run_json vm-snapshot-delete snapshot delete fixture-smoke --json >/dev/null
   run_json vm-stop stop --json >/dev/null
-  run_json vm-destroy destroy "$VM_WORKSPACE_ID" --json >/dev/null
-  VM_WORKSPACE_ID=""
+  run_json vm-destroy destroy "$workspace_id" --json >/dev/null
+  VM_WORKSPACE_IDS=()
+  popd >/dev/null
+}
+
+run_firefox_mode() {
+  if [[ "${TRYBOX_INTEGRATION_FIREFOX:-}" != "1" ]]; then
+    return
+  fi
+  require_vm_prereqs
+
+  local firefox_repo="${FIREFOX_REPO:-$HOME/firefox}"
+  [[ -d "$firefox_repo" ]] || fail "Firefox repo not found: $firefox_repo"
+  [[ -x "$firefox_repo/mach" ]] || fail "Firefox mach not found or not executable: $firefox_repo/mach"
+
+  local workspace_json
+  local workspace_id
+  local run_json_path
+  local run_id
+  local mach_command
+  mach_command="${TRYBOX_FIREFOX_MACH_COMMAND:-if command -v python3.11 >/dev/null 2>&1; then py=python3.11; else py=python3; fi; \"\$py\" ./mach python -c 'print(\"mach-python-ok\")'}"
+
+  pushd "$firefox_repo" >/dev/null
+  workspace_json="$(run_json firefox-workspace-use workspace use --target macos15-arm64 --profile build --json)"
+  workspace_id="$(json_get "$workspace_json" "data['workspace']['id']")"
+  VM_WORKSPACE_IDS+=("$workspace_id")
+
+  run_json firefox-info info --json >/dev/null
+  run_json firefox-doctor doctor --target macos15-arm64 --json >/dev/null
+  run_json firefox-up up --json >/dev/null
+  run_json firefox-status status --json >/dev/null
+  run_json firefox-sync sync --json >/dev/null
+
+  run_json_path="$(run_json firefox-mach-run run --json -- sh -lc "$mach_command")"
+  run_id="$(json_get "$run_json_path" "data['id']")"
+  run_trybox logs "$run_id" --follow >"$TMP/firefox-mach-logs.txt"
+  grep -q 'mach-python-ok' "$TMP/firefox-mach-logs.txt"
+  run_json firefox-events events "$run_id" --json >/dev/null
+  run_json firefox-history history --limit 10 --json >/dev/null
+
+  run_json firefox-snapshot-save snapshot save firefox-mach-smoke --json >/dev/null
+  run_json firefox-snapshot-list snapshot list --json >/dev/null
+  run_json firefox-snapshot-restore snapshot restore firefox-mach-smoke --json >/dev/null
+  run_json firefox-snapshot-delete snapshot delete firefox-mach-smoke --json >/dev/null
+
+  run_json firefox-stop stop --json >/dev/null
+  run_json firefox-destroy destroy "$workspace_id" --json >/dev/null
+  VM_WORKSPACE_IDS=()
   popd >/dev/null
 }
 
@@ -187,5 +251,6 @@ if [[ "$real_trybox_existed" == "0" && -n "$REAL_HOME" && -e "$REAL_HOME/.trybox
 fi
 
 run_vm_mode "$fixture"
+run_firefox_mode
 
 printf 'integration check passed\n'
