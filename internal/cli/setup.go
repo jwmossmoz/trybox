@@ -219,7 +219,7 @@ func resolveGitRepo() (string, error) {
 	if err == nil {
 		return canonicalPath(strings.TrimSpace(string(out)))
 	}
-	return "", fmt.Errorf("could not detect repo root; pass --repo or run trybox workspace use <repo>")
+	return "", fmt.Errorf("could not detect repo root; run trybox from inside a Git checkout or pass --repo path")
 }
 
 func canonicalPath(path string) (string, error) {

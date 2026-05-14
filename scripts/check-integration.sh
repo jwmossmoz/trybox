@@ -109,7 +109,8 @@ run_vm_mode() {
 
   local fixture="$1"
   local workspace_json
-  workspace_json="$(run_json vm-workspace-use workspace use --target macos15-arm64 --json "$fixture")"
+  pushd "$fixture" >/dev/null
+  workspace_json="$(run_json vm-workspace-use workspace use --target macos15-arm64 --json)"
   VM_WORKSPACE_ID="$(json_get "$workspace_json" "data['workspace']['id']")"
 
   run_json vm-doctor doctor --target macos15-arm64 --json >/dev/null
@@ -127,6 +128,7 @@ run_vm_mode() {
   run_json vm-stop stop --json >/dev/null
   run_json vm-destroy destroy "$VM_WORKSPACE_ID" --json >/dev/null
   VM_WORKSPACE_ID=""
+  popd >/dev/null
 }
 
 need_tool go
@@ -151,7 +153,9 @@ create_fixture_repo "$fixture"
 target_json="$(run_json target-list target list --json)"
 json_assert "$target_json" "isinstance(data, list) and any(target.get('name') == 'macos15-arm64' for target in data)"
 
-workspace_json="$(run_json workspace-use workspace use --target macos15-arm64 --json "$fixture")"
+pushd "$fixture" >/dev/null
+
+workspace_json="$(run_json workspace-use workspace use --target macos15-arm64 --json)"
 json_assert "$workspace_json" "data['default_target'] == 'macos15-arm64'"
 json_assert "$workspace_json" "data['workspace']['repo_root']"
 
@@ -161,12 +165,12 @@ json_assert "$show_json" "data['workspace']['target'] == 'macos15-arm64'"
 list_json="$(run_json workspace-list workspace list --json)"
 json_assert "$list_json" "len(data['workspaces']) == 1 and data['workspaces'][0]['is_default']"
 
-plan_json="$(run_json sync-plan sync-plan --repo "$fixture" --json)"
+plan_json="$(run_json sync-plan sync-plan --json)"
 json_assert "$plan_json" "'tracked.txt' in data['changed_tracked']"
 json_assert "$plan_json" "'untracked.txt' in data['untracked']"
 json_assert "$plan_json" "'excluded.txt' in data['excluded']"
 
-status_json="$(run_json status status --repo "$fixture" --json)"
+status_json="$(run_json status status --json)"
 json_assert "$status_json" "data['exists'] is False and data['running'] is False"
 
 unset_json="$(run_json workspace-unset workspace unset --json)"
@@ -179,6 +183,8 @@ if run_trybox workspace nope >"$TMP/negative.out" 2>&1; then
   fail "unknown workspace subcommand unexpectedly succeeded"
 fi
 grep -q 'unknown workspace subcommand' "$TMP/negative.out"
+
+popd >/dev/null
 
 [[ -d "$TRYBOX_HOME/.trybox" ]] || fail "expected temporary Trybox state under isolated HOME"
 if [[ "$real_trybox_existed" == "0" && -n "$REAL_HOME" && -e "$REAL_HOME/.trybox" ]]; then

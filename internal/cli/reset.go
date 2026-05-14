@@ -13,7 +13,7 @@ func reset(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(fs.Args()) != 0 {
-		return fmt.Errorf("usage: trybox reset [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox reset [--target name] [--json]")
 	}
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {

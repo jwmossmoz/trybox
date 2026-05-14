@@ -31,7 +31,7 @@ func taskCommand(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]")
 	}
 	plan, err := loadTaskPlan(ctx, replay.RootURL, rest[0])
 	if err != nil {
@@ -53,7 +53,7 @@ func tryCommand(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 1 && len(rest) != 3 {
-		return fmt.Errorf("usage: trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]")
 	}
 	revision := revisionFromInput(rest[0])
 	source, err := sourceRevisionStatus(opts, rest[0], revision)
@@ -68,7 +68,7 @@ func tryCommand(ctx context.Context, args []string) error {
 		return nil
 	}
 	if rest[1] != "task" {
-		return fmt.Errorf("usage: trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]")
 	}
 	plan, err := loadTaskPlan(ctx, replay.RootURL, rest[2])
 	if err != nil {

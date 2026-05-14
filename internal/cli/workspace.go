@@ -40,7 +40,7 @@ func workspaceCommand(ctx context.Context, args []string) error {
 
 func workspaceUse(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("workspace use", flagSpec{Target: true, JSON: true, Resources: true})
-	if handled, err := parseFlags(fs, args); handled || err != nil {
+	if handled, err := parseInterspersedFlags(fs, args); handled || err != nil {
 		return err
 	}
 	rest := fs.Args()

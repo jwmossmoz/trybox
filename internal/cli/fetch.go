@@ -20,7 +20,7 @@ func fetch(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(fs.Args()) != 0 || *url == "" || *to == "" {
-		return fmt.Errorf("usage: trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox fetch --url URL --to guest-path [--target name] [--json]")
 	}
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {

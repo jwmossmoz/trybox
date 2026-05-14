@@ -38,9 +38,11 @@ Trybox creates clean local VM workspaces for source debugging.
 
 ```sh
 trybox doctor --json
-trybox up --target macos15-arm64 --repo ~/src/project --json
-trybox sync --repo ~/src/project --json
-trybox run --repo ~/src/project -- ./build-or-test-command
+cd ~/src/project
+trybox workspace use --target macos15-arm64 --json
+trybox up --json
+trybox sync --json
+trybox run -- ./build-or-test-command
 trybox logs run_20260513T153000
 trybox status --json
 ```
