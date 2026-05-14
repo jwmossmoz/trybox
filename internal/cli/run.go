@@ -16,6 +16,7 @@ import (
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/state"
+	workspacepkg "github.com/jwmossmoz/trybox/internal/workspace"
 )
 
 func runCommand(ctx context.Context, args []string) error {
@@ -36,6 +37,9 @@ func runCommand(ctx context.Context, args []string) error {
 func runWorkspaceCommand(ctx context.Context, opts *options, command []string, extra map[string]any) error {
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {
+		return err
+	}
+	if err := workspacepkg.ValidateRepoRoot(workspace.RepoRoot); err != nil {
 		return err
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {

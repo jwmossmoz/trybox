@@ -42,6 +42,9 @@ func BuildPlan(ctx context.Context, repo string, limit int) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	if err := ValidateRepoRoot(repo); err != nil {
+		return Plan{}, err
+	}
 	paths, err := gitNUL(ctx, repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	if err != nil {
 		return Plan{}, err
@@ -96,6 +99,42 @@ func BuildPlan(ctx context.Context, repo string, limit int) (Plan, error) {
 	plan.LargestDirs = largestDirs(files, limit)
 	plan.ManifestPreview = preview(files, limit)
 	return plan, nil
+}
+
+func ValidateRepoRoot(repo string) error {
+	gitPath := filepath.Join(repo, ".git")
+	info, err := os.Lstat(gitPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return err
+	}
+	gitdir, ok := parseGitdir(data)
+	if !ok {
+		return nil
+	}
+	return fmt.Errorf("repo at %s is a git worktree (.git is a gitfile pointing to %s); trybox requires a standalone clone. Run:\n  git clone --no-local --no-hardlinks %s <new-location>\nand use that as the workspace repo", repo, gitdir, repo)
+}
+
+func parseGitdir(data []byte) (string, bool) {
+	line, _, _ := strings.Cut(string(data), "\n")
+	gitdir, ok := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
+	if !ok {
+		return "", false
+	}
+	gitdir = strings.TrimSpace(gitdir)
+	if gitdir == "" {
+		return "", false
+	}
+	return gitdir, true
 }
 
 func (p Plan) NULManifest() []byte {

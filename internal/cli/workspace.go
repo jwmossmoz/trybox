@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/jwmossmoz/trybox/internal/targets"
+	workspacepkg "github.com/jwmossmoz/trybox/internal/workspace"
 )
 
 func workspaceCommand(ctx context.Context, args []string) error {
@@ -56,6 +57,9 @@ func workspaceUse(ctx context.Context, args []string) error {
 	}
 	repo, err := resolveRepoForUse(repoInput)
 	if err != nil {
+		return err
+	}
+	if err := workspacepkg.ValidateRepoRoot(repo); err != nil {
 		return err
 	}
 	target, err := targets.Get(targetNameFor(opts, config))
