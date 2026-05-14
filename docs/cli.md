@@ -4,7 +4,8 @@ This guide explains the public Trybox command surface and the concepts behind
 it. The short version is:
 
 ```sh
-trybox workspace use --target macos15-arm64 ~/src/project
+cd ~/src/project
+trybox workspace use --target macos15-arm64
 trybox up
 trybox sync-plan
 trybox sync
@@ -35,10 +36,11 @@ trybox logs <run-id>
    trybox target list
    ```
 
-2. Select the source checkout and target:
+2. Select the current source checkout and target:
 
    ```sh
-   trybox workspace use --target macos15-arm64 ~/src/project
+   cd ~/src/project
+   trybox workspace use --target macos15-arm64
    ```
 
    This creates or updates Trybox workspace state. It does not create a VM.
@@ -129,7 +131,6 @@ trybox logs <run-id>
 | Flag | Commands | Meaning |
 | --- | --- | --- |
 | `--target name` | `doctor`, `workspace use`, `up`, `status`, `stop`, `sync`, `run`, `view` | Selects the target, such as `macos15-arm64`. When omitted, Trybox uses the configured default target, then falls back to `macos15-arm64`. |
-| `--repo path` | `up`, `status`, `stop`, `sync`, `sync-plan`, `run`, `view` | Selects the host source checkout. When omitted, Trybox uses the configured default repo, then tries to detect the current Git repo. |
 | `--json` | Most commands | Emits structured JSON for scripts and agents instead of human-readable text. |
 | `--cpu n` | `workspace use`, `up` | Sets the CPU count for the workspace VM. Resource changes require destroying an existing VM first. |
 | `--memory-mb n` | `workspace use`, `up` | Sets VM memory in MiB. Resource changes require destroying an existing VM first. |
@@ -139,6 +140,10 @@ trybox logs <run-id>
 | `--no-open` | `view` | Prints connection details without opening a host GUI client. `--json` implies `--no-open`. |
 | `--reuse-client` | `view` | Accepted for compatibility with earlier command shapes. Trybox does not reset existing host GUI clients. |
 | `--restart-display` | `view` | Stops a running VM and starts it again in the requested display mode. |
+
+`--repo path` is still accepted by repo-bound commands as an explicit override,
+but the normal workflow is to run Trybox from inside the source checkout. When
+no workspace default exists, Trybox detects the current Git repository.
 
 ## Choosing Commands
 

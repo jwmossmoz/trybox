@@ -24,13 +24,15 @@ Prerequisites:
 - Source checkout on the host
 
 ```sh
-go run ./cmd/trybox doctor
-go run ./cmd/trybox target list
+go build -o /tmp/trybox ./cmd/trybox
+cd ~/src/project
+/tmp/trybox doctor
+/tmp/trybox target list
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
-go run ./cmd/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100 ~/src/project
-go run ./cmd/trybox up
-go run ./cmd/trybox sync
-go run ./cmd/trybox run -- env
+/tmp/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100
+/tmp/trybox up
+/tmp/trybox sync
+/tmp/trybox run -- env
 ```
 
 Build a local binary when the command shape is stable enough for repeated use:
@@ -67,7 +69,7 @@ Set or inspect the default workspace:
 
 ```sh
 trybox workspace show
-trybox workspace use --target macos15-arm64 ~/src/project
+trybox workspace use --target macos15-arm64
 ```
 
 Plan and sync a dirty checkout:
@@ -99,7 +101,7 @@ trybox view --vnc --no-open  # Tart VNC endpoint only
 - Human-readable output by default.
 - `--json` for agent/script output on commands that return structured state.
 - Diagnostics and command stderr go to stderr.
-- Workspace defaults avoid repeating `--repo` on every command.
+- Repo-bound commands default to the source checkout you run Trybox from.
 - `view --json` implies `--no-open`.
 - `--no-open` means Trybox does not open a host GUI client.
 
@@ -130,26 +132,26 @@ trybox bootstrap [--target name] [--json]
 trybox destroy [<workspace-id>] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
-trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]
+trybox fetch --url URL --to guest-path [--target name] [--json]
 trybox history [--limit n] [--json]
 trybox info [--json]
 trybox logs <run-id> [--follow|-f] [--from-end]
-trybox reset [--target name] [--repo path] [--json]
-trybox run [--target name] [--repo path] [--json] -- <command>
-trybox shell [--target name] [--repo path] [-- <command>]
-trybox snapshot save <name> [--target name] [--repo path] [--json]
-trybox snapshot list [--target name] [--repo path] [--json]
-trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
-trybox snapshot delete <name> [--target name] [--repo path] [--json]
-trybox status [--target name] [--repo path] [--json]
-trybox stop [--target name] [--repo path] [--json]
-trybox sync [--target name] [--repo path] [--json]
-trybox sync-plan [--repo path] [--limit n] [--json]
-trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
+trybox reset [--target name] [--json]
+trybox run [--target name] [--json] -- <command>
+trybox shell [--target name] [-- <command>]
+trybox snapshot save <name> [--target name] [--json]
+trybox snapshot list [--target name] [--json]
+trybox snapshot restore <name> [--display] [--target name] [--json]
+trybox snapshot delete <name> [--target name] [--json]
+trybox status [--target name] [--json]
+trybox stop [--target name] [--json]
+trybox sync [--target name] [--json]
+trybox sync-plan [--limit n] [--json]
+trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
 trybox target list [--json]
-trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
-trybox up [--target name] [--repo path] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
-trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
+trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
+trybox up [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
+trybox view [--target name] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
 trybox workspace list [--json]
 trybox workspace show [--json]
 trybox workspace unset [--json]

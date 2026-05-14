@@ -94,7 +94,7 @@ func stop(ctx context.Context, args []string) error {
 
 func destroy(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("destroy", flagSpec{JSON: true})
-	if handled, err := parseFlags(fs, args); handled || err != nil {
+	if handled, err := parseInterspersedFlags(fs, args); handled || err != nil {
 		return err
 	}
 	rest := fs.Args()

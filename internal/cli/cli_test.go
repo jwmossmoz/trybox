@@ -91,6 +91,19 @@ func TestDeleteChunkSplitsLargeCommands(t *testing.T) {
 	}
 }
 
+func TestParseInterspersedFlagsAllowsTrailingJSON(t *testing.T) {
+	fs, opts := commandFlags("destroy", flagSpec{JSON: true})
+	if handled, err := parseInterspersedFlags(fs, []string{"workspace_test", "--json"}); handled || err != nil {
+		t.Fatalf("parseInterspersedFlags() handled=%t err=%v", handled, err)
+	}
+	if !opts.JSON {
+		t.Fatal("opts.JSON = false, want true")
+	}
+	if got := fs.Args(); len(got) != 1 || got[0] != "workspace_test" {
+		t.Fatalf("fs.Args() = %v, want workspace_test", got)
+	}
+}
+
 func TestParseLogsArgsAllowsFlagsBeforeOrAfterRunID(t *testing.T) {
 	runID, opts, err := parseLogsArgs([]string{"run_1", "--follow", "--from-end"})
 	if err != nil {

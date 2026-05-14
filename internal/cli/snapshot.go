@@ -54,11 +54,11 @@ func snapshotCommand(ctx context.Context, args []string) error {
 
 func snapshotSave(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("snapshot save", flagSpec{Target: true, Repo: true, JSON: true})
-	if handled, err := parseFlags(fs, args); handled || err != nil {
+	if handled, err := parseInterspersedFlags(fs, args); handled || err != nil {
 		return err
 	}
 	if len(fs.Args()) != 1 {
-		return fmt.Errorf("usage: trybox snapshot save <name> [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox snapshot save <name> [--target name] [--json]")
 	}
 	name := fs.Args()[0]
 	if err := validateSnapshotName(name); err != nil {
@@ -110,7 +110,7 @@ func snapshotList(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(fs.Args()) != 0 {
-		return fmt.Errorf("usage: trybox snapshot list [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox snapshot list [--target name] [--json]")
 	}
 	_, workspace, b, store, err := setup(opts)
 	if err != nil {
@@ -149,11 +149,11 @@ func snapshotList(ctx context.Context, args []string) error {
 func snapshotRestore(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("snapshot restore", flagSpec{Target: true, Repo: true, JSON: true})
 	display := fs.Bool("display", false, "restart with a display instead of headless")
-	if handled, err := parseFlags(fs, args); handled || err != nil {
+	if handled, err := parseInterspersedFlags(fs, args); handled || err != nil {
 		return err
 	}
 	if len(fs.Args()) != 1 {
-		return fmt.Errorf("usage: trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox snapshot restore <name> [--display] [--target name] [--json]")
 	}
 	name := fs.Args()[0]
 	if err := validateSnapshotName(name); err != nil {
@@ -208,11 +208,11 @@ func snapshotRestore(ctx context.Context, args []string) error {
 
 func snapshotDelete(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("snapshot delete", flagSpec{Target: true, Repo: true, JSON: true})
-	if handled, err := parseFlags(fs, args); handled || err != nil {
+	if handled, err := parseInterspersedFlags(fs, args); handled || err != nil {
 		return err
 	}
 	if len(fs.Args()) != 1 {
-		return fmt.Errorf("usage: trybox snapshot delete <name> [--target name] [--repo path] [--json]")
+		return fmt.Errorf("usage: trybox snapshot delete <name> [--target name] [--json]")
 	}
 	name := fs.Args()[0]
 	if err := validateSnapshotName(name); err != nil {
