@@ -13,7 +13,6 @@ fi
 brew update
 
 packages=(
-  autoconf@2.13
   ccache
   cmake
   git
