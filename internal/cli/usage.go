@@ -73,7 +73,12 @@ Usage:
 		"logs": `trybox logs: print stdout and stderr logs for a run
 
 Usage:
-  trybox logs <run-id>
+  trybox logs <run-id> [--follow|-f] [--from-end]
+
+Notes:
+  --follow keeps printing new log bytes until the run finishes, then exits with
+  the run's recorded exit code. --from-end starts following at the end of
+  existing logs and requires --follow.
 `,
 		"run": `trybox run: sync the workspace and run a command in the guest
 
@@ -92,6 +97,38 @@ Usage:
 
 Notes:
   Without a command, opens a login shell in the guest work path.
+`,
+		"snapshot": `trybox snapshot: save, restore, list, and delete workspace VM snapshots
+
+Usage:
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+  trybox snapshot list [--target name] [--repo path] [--json]
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
+
+Notes:
+  Snapshot names must be kebab-case. Snapshots are scoped to the selected
+  workspace and keep metadata under Trybox state.
+`,
+		"snapshot save": `trybox snapshot save: capture the selected workspace VM state
+
+Usage:
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+`,
+		"snapshot list": `trybox snapshot list: list snapshots for the selected workspace
+
+Usage:
+  trybox snapshot list [--target name] [--repo path] [--json]
+`,
+		"snapshot restore": `trybox snapshot restore: replace the workspace VM from a snapshot
+
+Usage:
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+`,
+		"snapshot delete": `trybox snapshot delete: delete a workspace snapshot
+
+Usage:
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
 `,
 		"status": `trybox status: show workspace VM state
 
@@ -113,10 +150,26 @@ Usage:
 Usage:
   trybox sync-plan [--repo path] [--limit n] [--json]
 `,
+		"task": `trybox task: inspect or replay a Taskcluster task
+
+Usage:
+  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
+
+Notes:
+  Without run or shell, prints the replay plan. --root-url can also come from TASKCLUSTER_ROOT_URL.
+`,
 		"target": `trybox target: inspect built-in target names
 
 Usage:
   trybox target list [--json]
+`,
+		"try": `trybox try: inspect a source revision and optionally replay a task
+
+Usage:
+  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
+
+Notes:
+  Replay run/shell requires the host checkout HEAD to match the requested revision.
 `,
 		"target list": `trybox target list: list built-in target names
 
@@ -180,15 +233,21 @@ Usage:
   trybox fetch --url URL --to guest-path [--target name] [--repo path] [--json]
   trybox history [--limit n] [--json]
   trybox info [--json]
-  trybox logs <run-id>
+  trybox logs <run-id> [--follow|-f] [--from-end]
   trybox reset [--target name] [--repo path] [--json]
   trybox run [--target name] [--repo path] [--json] -- <command>
   trybox shell [--target name] [--repo path] [-- <command>]
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+  trybox snapshot list [--target name] [--repo path] [--json]
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
   trybox status [--target name] [--repo path] [--json]
   trybox stop [--target name] [--repo path] [--json]
   trybox sync [--target name] [--repo path] [--json]
   trybox sync-plan [--repo path] [--limit n] [--json]
+  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--repo path] [--json]
   trybox target list [--json]
+  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--repo path] [--json]
   trybox up [--target name] [--repo path] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
   trybox view [--target name] [--repo path] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
   trybox workspace list [--json]

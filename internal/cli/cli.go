@@ -30,8 +30,14 @@ func Run(ctx context.Context, args []string) error {
 		return fetch(ctx, args[1:])
 	case "target":
 		return target(ctx, args[1:])
+	case "task":
+		return taskCommand(ctx, args[1:])
+	case "try":
+		return tryCommand(ctx, args[1:])
 	case "workspace":
 		return workspaceCommand(ctx, args[1:])
+	case "snapshot":
+		return snapshotCommand(ctx, args[1:])
 	case "up":
 		return up(ctx, args[1:])
 	case "sync":

@@ -56,6 +56,24 @@ func (r Reference) Exec(ctx context.Context, target targets.Target, workspace st
 	return -1, referenceErr(target)
 }
 
+func (r Reference) SnapshotSave(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string) error {
+	return referenceErr(target)
+}
+
+func (r Reference) SnapshotRestore(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string, opts StartOptions) error {
+	return referenceErr(target)
+}
+
+func (r Reference) SnapshotDelete(ctx context.Context, snapshotVMName string) error {
+	_ = ctx
+	return fmt.Errorf("reference backend has no runnable VM snapshots")
+}
+
+func (r Reference) SnapshotSize(ctx context.Context, snapshotVMName string) (SnapshotSize, error) {
+	_ = ctx
+	return SnapshotSize{}, fmt.Errorf("reference backend has no runnable VM snapshots")
+}
+
 func referenceErr(target targets.Target) error {
 	return fmt.Errorf("target %q is reference-only and is not runnable by this backend: %s", target.Name, target.Notes)
 }

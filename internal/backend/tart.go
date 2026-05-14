@@ -109,7 +109,7 @@ func (t Tart) Start(ctx context.Context, target targets.Target, workspace state.
 	}
 	defer logFile.Close()
 
-	args := []string{"run", "--no-clipboard", "--no-audio"}
+	args := []string{"run", "--no-clipboard", "--no-audio", "--suspendable"}
 	if opts.VNC {
 		args = append(args, "--vnc")
 	} else if opts.Headless {
@@ -175,6 +175,66 @@ func (t Tart) Exec(ctx context.Context, target targets.Target, workspace state.W
 	}, remoteCommand, opts.Stdout, opts.Stderr)
 }
 
+func (t Tart) SnapshotSave(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string) error {
+	if !t.Exists(ctx, workspace.VMName) {
+		return fmt.Errorf("workspace VM %q does not exist; run trybox up first", workspace.VMName)
+	}
+	if t.Exists(ctx, snapshotVMName) {
+		return fmt.Errorf("snapshot VM %q already exists", snapshotVMName)
+	}
+	wasRunning := t.IsRunning(ctx, workspace.VMName)
+	if wasRunning {
+		if _, err := tart(ctx, "suspend", workspace.VMName); err != nil {
+			return err
+		}
+		defer func() {
+			_ = t.Start(context.Background(), target, workspace, StartOptions{Headless: true})
+		}()
+	}
+	if _, err := tart(ctx, "clone", workspace.VMName, snapshotVMName); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t Tart) SnapshotRestore(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string, opts StartOptions) error {
+	if !t.Exists(ctx, snapshotVMName) {
+		return fmt.Errorf("snapshot VM %q does not exist", snapshotVMName)
+	}
+	if err := t.Stop(ctx, workspace); err != nil {
+		return err
+	}
+	if t.Exists(ctx, workspace.VMName) {
+		if _, err := tart(ctx, "delete", workspace.VMName); err != nil {
+			return err
+		}
+	}
+	if _, err := tart(ctx, "clone", snapshotVMName, workspace.VMName); err != nil {
+		return err
+	}
+	return t.Start(ctx, target, workspace, opts)
+}
+
+func (t Tart) SnapshotDelete(ctx context.Context, snapshotVMName string) error {
+	if !t.Exists(ctx, snapshotVMName) {
+		return nil
+	}
+	_, err := tart(ctx, "delete", snapshotVMName)
+	return err
+}
+
+func (t Tart) SnapshotSize(ctx context.Context, snapshotVMName string) (SnapshotSize, error) {
+	out, err := tart(ctx, "list")
+	if err != nil {
+		return SnapshotSize{}, err
+	}
+	size, ok := tartListSize(out, snapshotVMName)
+	if !ok {
+		return SnapshotSize{}, fmt.Errorf("snapshot VM %q does not exist", snapshotVMName)
+	}
+	return size, nil
+}
+
 func tart(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "tart", args...)
 	var stdout, stderr bytes.Buffer
@@ -202,6 +262,26 @@ func vmState(listOutput, vmName string) string {
 		}
 	}
 	return ""
+}
+
+func tartListSize(listOutput, vmName string) (SnapshotSize, bool) {
+	for _, line := range strings.Split(listOutput, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[1] != vmName {
+			continue
+		}
+		nominal, nominalErr := strconv.ParseInt(fields[2], 10, 64)
+		disk, diskErr := strconv.ParseInt(fields[3], 10, 64)
+		if nominalErr != nil || diskErr != nil {
+			return SnapshotSize{}, false
+		}
+		const gib = int64(1024 * 1024 * 1024)
+		return SnapshotSize{
+			NominalBytes: nominal * gib,
+			DiskBytes:    disk * gib,
+		}, true
+	}
+	return SnapshotSize{}, false
 }
 
 func suffix(detail string) string {
