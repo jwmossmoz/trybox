@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-set -x
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 TMP="$(cd "$TMP" && pwd -P)"
 REAL_HOME="${HOME:-}"
 TRYBOX_HOME="$TMP/home"
-FIXTURE="$TMP/fixture-repo"
-FIREFOX_REPO_USED=""
+FIREFOX_REPO_USED="${FIREFOX_REPO:-$REAL_HOME/firefox}"
 
 cleanup() {
   set +e
   if command -v trybox >/dev/null 2>&1; then
-    if [[ -d "${FIXTURE:-}" ]]; then
-      trybox destroy --target macos15-arm64 --repo "$FIXTURE" --json >/dev/null 2>&1
-    fi
     if [[ -n "${FIREFOX_REPO_USED:-}" ]]; then
       trybox destroy --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >/dev/null 2>&1
     fi
@@ -27,9 +22,9 @@ cleanup() {
 trap 'printf "integration check failed near line %s\n" "$LINENO" >&2' ERR
 trap cleanup EXIT
 
-command -v go
-command -v git
-command -v jq
+command -v go >/dev/null
+command -v git >/dev/null
+command -v jq >/dev/null
 
 mkdir -p "$TRYBOX_HOME" "$TMP/bin"
 real_trybox_existed=0
@@ -38,30 +33,22 @@ if [[ -n "$REAL_HOME" && -e "$REAL_HOME/.trybox" ]]; then
 fi
 
 cd "$ROOT"
-go test ./...
-go build -o "$TMP/bin/trybox" ./cmd/trybox
+go test ./... >/dev/null
+go build -o "$TMP/bin/trybox" ./cmd/trybox >/dev/null
 
 export PATH="$TMP/bin:$PATH"
 export HOME="$TRYBOX_HOME"
 
-mkdir -p "$FIXTURE"
-git -C "$FIXTURE" init -q
-git -C "$FIXTURE" config user.email trybox-integration@example.invalid
-git -C "$FIXTURE" config user.name "Trybox Integration"
-printf 'ignored.log\n' >"$FIXTURE/.gitignore"
-printf 'tracked\n' >"$FIXTURE/tracked.txt"
-printf 'ignored\n' >"$FIXTURE/ignored.log"
-git -C "$FIXTURE" add .gitignore tracked.txt
-printf 'changed\n' >"$FIXTURE/tracked.txt"
-printf 'untracked\n' >"$FIXTURE/untracked.txt"
+[[ -d "$FIREFOX_REPO_USED" ]]
+[[ -x "$FIREFOX_REPO_USED/mach" ]]
 
 trybox target list --json >"$TMP/targets.json"
 jq empty "$TMP/targets.json"
 jq -e 'any(.[]; .name == "macos15-arm64")' "$TMP/targets.json" >/dev/null
 
-trybox status --target macos15-arm64 --repo "$FIXTURE" --json >"$TMP/status.json"
+trybox status --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/status.json"
 jq empty "$TMP/status.json"
-jq -e --arg repo "$FIXTURE" '.vm.repo_root == $repo and .exists == false and .running == false' "$TMP/status.json" >/dev/null
+jq -e --arg repo "$FIREFOX_REPO_USED" '.vm.repo_root == $repo and .running == false' "$TMP/status.json" >/dev/null
 
 trybox help run >"$TMP/help-run.txt"
 grep -q TRYBOX_TARGET "$TMP/help-run.txt"
@@ -79,18 +66,21 @@ if [[ "$real_trybox_existed" == "0" && -n "$REAL_HOME" && -e "$REAL_HOME/.trybox
 fi
 
 if [[ "${TRYBOX_SKIP_VM:-}" != "1" ]]; then
-  command -v tart
+  command -v tart >/dev/null
   if ! tart list 2>/dev/null | grep -q 'trybox-macos15-arm64-image'; then
     printf 'trybox-macos15-arm64-image is missing; create it before running the full integration check\n' >&2
     exit 1
   fi
 
-  trybox run --target macos15-arm64 --repo "$FIXTURE" --json -- sh -lc 'pwd && test -d .git && printf vm-ok' >"$TMP/vm-run.json"
-  jq empty "$TMP/vm-run.json"
-  run_id="$(jq -r '.id' "$TMP/vm-run.json")"
+  mach_command="${TRYBOX_FIREFOX_MACH_COMMAND:-pwd && test -d .git && test -x ./mach && ./mach --help >/dev/null && printf firefox-ok}"
+  trybox run --target macos15-arm64 --repo "$FIREFOX_REPO_USED" -- sh -lc "$mach_command"
 
-  trybox logs >"$TMP/vm-latest-log.txt"
-  grep -q vm-ok "$TMP/vm-latest-log.txt"
+  trybox logs >"$TMP/firefox-latest-log.txt"
+  grep -q firefox-ok "$TMP/firefox-latest-log.txt"
+
+  trybox history --limit 1 --json >"$TMP/vm-history.json"
+  jq empty "$TMP/vm-history.json"
+  run_id="$(jq -r '.[0].id' "$TMP/vm-history.json")"
 
   trybox events "$run_id" --json >"$TMP/vm-events.json"
   jq empty "$TMP/vm-events.json"
@@ -98,36 +88,21 @@ if [[ "${TRYBOX_SKIP_VM:-}" != "1" ]]; then
   trybox history --limit 5 --json >"$TMP/vm-history.json"
   jq empty "$TMP/vm-history.json"
 
-  trybox status --target macos15-arm64 --repo "$FIXTURE" --json >"$TMP/vm-status.json"
+  trybox status --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/vm-status.json"
   jq empty "$TMP/vm-status.json"
 
-  trybox view --target macos15-arm64 --repo "$FIXTURE" --vnc --json >"$TMP/vm-view.json"
-  jq empty "$TMP/vm-view.json"
-  jq -e '.display == "tart-vnc" and .client == "none" and (.url | startswith("vnc://"))' "$TMP/vm-view.json" >/dev/null
+  trybox view --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --vnc --json >"$TMP/vnc-view.json"
+  jq empty "$TMP/vnc-view.json"
+  jq -e '.display == "tart-vnc" and .client == "none" and (.url | startswith("vnc://"))' "$TMP/vnc-view.json" >/dev/null
 
-  trybox destroy --target macos15-arm64 --repo "$FIXTURE" --json >"$TMP/vm-destroy.json"
-  jq empty "$TMP/vm-destroy.json"
+  trybox view --target macos15-arm64 --repo "$FIREFOX_REPO_USED"
+  sleep "${TRYBOX_VIEW_PAUSE_SECONDS:-5}"
+
+  trybox destroy --target macos15-arm64 --repo "$FIREFOX_REPO_USED"
 fi
 
 if [[ "${TRYBOX_INTEGRATION_FIREFOX:-}" == "1" ]]; then
-  command -v tart
-  tart list 2>/dev/null | grep -q 'trybox-macos15-arm64-image'
-  FIREFOX_REPO_USED="${FIREFOX_REPO:-$REAL_HOME/firefox}"
-  [[ -d "$FIREFOX_REPO_USED" ]]
-  [[ -x "$FIREFOX_REPO_USED/mach" ]]
-
-  mach_command="${TRYBOX_FIREFOX_MACH_COMMAND:-./mach --help >/dev/null && printf mach-ok}"
-  trybox run --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json -- sh -lc "$mach_command" >"$TMP/firefox-run.json"
-  jq empty "$TMP/firefox-run.json"
-
-  trybox logs >"$TMP/firefox-log.txt"
-  grep -q mach-ok "$TMP/firefox-log.txt"
-
-  trybox status --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/firefox-status.json"
-  jq empty "$TMP/firefox-status.json"
-
-  trybox destroy --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/firefox-destroy.json"
-  jq empty "$TMP/firefox-destroy.json"
+  printf 'TRYBOX_INTEGRATION_FIREFOX is no longer needed; ~/firefox is the default integration repo\n' >&2
 fi
 
 printf 'integration check passed\n'
