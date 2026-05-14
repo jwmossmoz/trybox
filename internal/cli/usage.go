@@ -67,6 +67,38 @@ Notes:
 Usage:
   trybox run [--target name] [--repo path] [--json] -- <command>
 `,
+		"snapshot": `trybox snapshot: save, restore, list, and delete workspace VM snapshots
+
+Usage:
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+  trybox snapshot list [--target name] [--repo path] [--json]
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
+
+Notes:
+  Snapshot names must be kebab-case. Snapshots are scoped to the selected
+  workspace and keep metadata under Trybox state.
+`,
+		"snapshot save": `trybox snapshot save: capture the selected workspace VM state
+
+Usage:
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+`,
+		"snapshot list": `trybox snapshot list: list snapshots for the selected workspace
+
+Usage:
+  trybox snapshot list [--target name] [--repo path] [--json]
+`,
+		"snapshot restore": `trybox snapshot restore: replace the workspace VM from a snapshot
+
+Usage:
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+`,
+		"snapshot delete": `trybox snapshot delete: delete a workspace snapshot
+
+Usage:
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
+`,
 		"status": `trybox status: show workspace VM state
 
 Usage:
@@ -169,6 +201,10 @@ Usage:
   trybox history [--limit n] [--json]
   trybox logs <run-id> [--follow|-f] [--from-end]
   trybox run [--target name] [--repo path] [--json] -- <command>
+  trybox snapshot save <name> [--target name] [--repo path] [--json]
+  trybox snapshot list [--target name] [--repo path] [--json]
+  trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+  trybox snapshot delete <name> [--target name] [--repo path] [--json]
   trybox status [--target name] [--repo path] [--json]
   trybox stop [--target name] [--repo path] [--json]
   trybox sync [--target name] [--repo path] [--json]

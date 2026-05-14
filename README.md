@@ -130,6 +130,10 @@ trybox events <run-id> [--json]
 trybox history [--limit n] [--json]
 trybox logs <run-id>
 trybox run [--target name] [--repo path] [--json] -- <command>
+trybox snapshot save <name> [--target name] [--repo path] [--json]
+trybox snapshot list [--target name] [--repo path] [--json]
+trybox snapshot restore <name> [--display] [--target name] [--repo path] [--json]
+trybox snapshot delete <name> [--target name] [--repo path] [--json]
 trybox status [--target name] [--repo path] [--json]
 trybox stop [--target name] [--repo path] [--json]
 trybox sync [--target name] [--repo path] [--json]

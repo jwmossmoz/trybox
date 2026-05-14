@@ -20,6 +20,11 @@ type ExecOptions struct {
 	Stderr  io.Writer
 }
 
+type SnapshotSize struct {
+	NominalBytes int64
+	DiskBytes    int64
+}
+
 type Backend interface {
 	Name() string
 	Doctor(ctx context.Context, target targets.Target) []Check
@@ -31,6 +36,10 @@ type Backend interface {
 	Destroy(ctx context.Context, workspace state.Workspace) error
 	IP(ctx context.Context, workspace state.Workspace, waitSeconds int) (string, error)
 	Exec(ctx context.Context, target targets.Target, workspace state.Workspace, command []string, opts ExecOptions) (int, error)
+	SnapshotSave(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string) error
+	SnapshotRestore(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string, opts StartOptions) error
+	SnapshotDelete(ctx context.Context, snapshotVMName string) error
+	SnapshotSize(ctx context.Context, snapshotVMName string) (SnapshotSize, error)
 }
 
 type Check struct {
