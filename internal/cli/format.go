@@ -11,15 +11,26 @@ import (
 	"github.com/jwmossmoz/trybox/internal/targets"
 )
 
-func viewTarget(target targets.Target) targetView {
+func viewTarget(target targets.Target, imagePresent bool) targetView {
 	return targetView{
-		Name:     target.Name,
-		OS:       target.OS,
-		Version:  target.Version,
-		Arch:     target.Arch,
-		Runnable: target.Runnable,
-		Notes:    target.Notes,
+		Name:         target.Name,
+		OS:           target.OS,
+		Version:      target.Version,
+		Arch:         target.Arch,
+		Runnable:     target.Runnable,
+		ImageName:    target.ImageName,
+		SourceImage:  target.SourceImage,
+		ImagePresent: imagePresent,
+		CloneCommand: targetCloneCommand(target),
+		Notes:        target.Notes,
 	}
+}
+
+func targetCloneCommand(target targets.Target) string {
+	if target.SourceImage == "" || target.ImageName == "" {
+		return ""
+	}
+	return "tart clone " + shellQuote(target.SourceImage) + " " + shellQuote(target.ImageName)
 }
 
 func viewWorkspace(workspace state.Workspace) workspaceView {

@@ -36,6 +36,7 @@ func commandFlags(name string, spec flagSpec) (*flag.FlagSet, *options) {
 		fs.BoolVar(&opts.VNC, "vnc", false, "start VM with VNC display")
 	}
 	if spec.Resources {
+		fs.StringVar(&opts.Profile, "profile", "", "named VM resource profile: test or build")
 		fs.IntVar(&opts.CPU, "cpu", 0, "override VM CPU count for this workspace")
 		fs.IntVar(&opts.MemoryMB, "memory-mb", 0, "override VM memory in MiB for this workspace")
 		fs.IntVar(&opts.DiskGB, "disk-gb", 0, "override VM disk size in GiB for this workspace")

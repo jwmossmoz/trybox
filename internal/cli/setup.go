@@ -30,7 +30,9 @@ func setup(opts *options) (targets.Target, state.Workspace, backend.Backend, sta
 	if err != nil {
 		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	applyResourceOverrides(&workspace, target, opts)
+	if err := applyResourceOverrides(&workspace, target, opts); err != nil {
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
+	}
 	b := backendFor(target)
 	return target, workspace, b, store, nil
 }
@@ -138,7 +140,38 @@ func loadOrCreateWorkspace(store state.Store, target targets.Target, repo string
 	}, nil
 }
 
-func applyResourceOverrides(workspace *state.Workspace, target targets.Target, opts *options) {
+type resourceProfile struct {
+	CPU      int
+	MemoryMB int
+	DiskGB   int
+}
+
+var resourceProfiles = map[string]resourceProfile{
+	"test": {
+		CPU:      4,
+		MemoryMB: 8192,
+		DiskGB:   80,
+	},
+	"build": {
+		CPU:      10,
+		MemoryMB: 24576,
+		DiskGB:   150,
+	},
+}
+
+func applyResourceOverrides(workspace *state.Workspace, target targets.Target, opts *options) error {
+	if opts == nil {
+		opts = &options{}
+	}
+	if opts.Profile != "" {
+		profile, ok := resourceProfiles[opts.Profile]
+		if !ok {
+			return fmt.Errorf("unknown profile %q; available profiles: test, build", opts.Profile)
+		}
+		workspace.CPU = profile.CPU
+		workspace.MemoryMB = profile.MemoryMB
+		workspace.DiskGB = profile.DiskGB
+	}
 	if opts.CPU > 0 {
 		workspace.CPU = opts.CPU
 	}
@@ -157,10 +190,11 @@ func applyResourceOverrides(workspace *state.Workspace, target targets.Target, o
 	if workspace.DiskGB == 0 {
 		workspace.DiskGB = target.DiskGB
 	}
+	return nil
 }
 
 func resourceOverridesRequested(opts *options) bool {
-	return opts != nil && (opts.CPU > 0 || opts.MemoryMB > 0 || opts.DiskGB > 0)
+	return opts != nil && (opts.Profile != "" || opts.CPU > 0 || opts.MemoryMB > 0 || opts.DiskGB > 0)
 }
 
 func resolveRepo(repo string, config state.Config) (string, error) {

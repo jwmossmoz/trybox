@@ -73,7 +73,9 @@ func workspaceUse(ctx context.Context, args []string) error {
 	if resourceOverridesRequested(opts) && backendFor(target).Exists(ctx, workspace.VMName) {
 		return fmt.Errorf("resource changes require destroying existing workspace VM %q first; run: trybox destroy %s", workspace.VMName, workspace.ID)
 	}
-	applyResourceOverrides(&workspace, target, opts)
+	if err := applyResourceOverrides(&workspace, target, opts); err != nil {
+		return err
+	}
 	if err := store.SaveWorkspace(workspace); err != nil {
 		return err
 	}

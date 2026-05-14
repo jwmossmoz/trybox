@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/targets"
@@ -57,6 +58,11 @@ func localToolChecks() []backend.Check {
 	for _, tool := range tools {
 		if path, err := exec.LookPath(tool); err == nil {
 			checks = append(checks, backend.Check{Name: tool, OK: true, Detail: path})
+			if tool == "rsync" {
+				if hint := rsyncVersionHint(path); hint != "" {
+					checks = append(checks, backend.Check{Name: "rsync-version", OK: true, Detail: hint})
+				}
+			}
 		} else {
 			checks = append(checks, backend.Check{Name: tool, OK: false, Detail: tool + " not found in PATH"})
 		}
@@ -93,7 +99,7 @@ func target(ctx context.Context, args []string) error {
 	list := targets.List()
 	views := make([]targetView, 0, len(list))
 	for _, target := range list {
-		views = append(views, viewTarget(target))
+		views = append(views, viewTarget(target, backendFor(target).Exists(ctx, target.ImageName)))
 	}
 	if *jsonOut {
 		return writeJSON(os.Stdout, views)
@@ -103,8 +109,31 @@ func target(ctx context.Context, args []string) error {
 		if target.Runnable {
 			runnable = "runnable"
 		}
-		fmt.Printf("%-26s %-9s %-8s %-10s %s\n", target.Name, runnable, target.OS, target.Version, target.Arch)
+		image := "missing"
+		if target.ImagePresent {
+			image = "present"
+		}
+		fmt.Printf("%-26s %-9s %-8s %-10s %-8s %s\n", target.Name, runnable, target.OS, target.Version, target.Arch, image)
+		if target.CloneCommand != "" {
+			fmt.Printf("  clone: %s\n", target.CloneCommand)
+		}
 	}
 	_ = ctx
 	return nil
+}
+
+func rsyncVersionHint(path string) string {
+	out, err := exec.Command(path, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	return rsyncVersionHintFromOutput(string(out))
+}
+
+func rsyncVersionHintFromOutput(out string) string {
+	firstLine := strings.SplitN(out, "\n", 2)[0]
+	if strings.Contains(firstLine, "version 2.6.9") {
+		return "system rsync is 2.6.9; brew install rsync for cleaner sync progress"
+	}
+	return ""
 }

@@ -131,3 +131,22 @@ func (b *recordingBackend) Exec(_ context.Context, _ targets.Target, _ state.Wor
 	}
 	return b.execExit, nil
 }
+
+func (b *recordingBackend) SnapshotSave(context.Context, targets.Target, state.Workspace, string) error {
+	b.actions = append(b.actions, "snapshot save")
+	return nil
+}
+
+func (b *recordingBackend) SnapshotRestore(context.Context, targets.Target, state.Workspace, string, backend.StartOptions) error {
+	b.actions = append(b.actions, "snapshot restore")
+	return nil
+}
+
+func (b *recordingBackend) SnapshotDelete(context.Context, string) error {
+	b.actions = append(b.actions, "snapshot delete")
+	return nil
+}
+
+func (b *recordingBackend) SnapshotSize(context.Context, string) (backend.SnapshotSize, error) {
+	return backend.SnapshotSize{}, nil
+}
