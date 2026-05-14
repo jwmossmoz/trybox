@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	neturl "net/url"
 	"os"
 	"os/exec"
@@ -48,7 +48,7 @@ func view(ctx context.Context, args []string) error {
 		if _, err := b.IP(ctx, workspace, 120); err != nil {
 			return err
 		}
-		if err := ensureAutoLogin(ctx, target, workspace, b); err != nil {
+		if err := completeAutoLoginBootCycle(ctx, target, workspace, b); err != nil {
 			return err
 		}
 		if b.IsRunning(ctx, workspace.VMName) {
@@ -130,26 +130,45 @@ func vncURL(host, username, password string) string {
 	return value.String()
 }
 
-func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) error {
+func completeAutoLoginBootCycle(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) error {
+	changed, err := ensureAutoLogin(ctx, target, workspace, b)
+	if err != nil || !changed {
+		return err
+	}
+	if b.IsRunning(ctx, workspace.VMName) {
+		if err := b.Stop(ctx, workspace); err != nil {
+			return err
+		}
+	}
+	if err := b.Start(ctx, target, workspace, backend.StartOptions{Headless: true}); err != nil {
+		return err
+	}
+	_, err = b.IP(ctx, workspace, 120)
+	return err
+}
+
+func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) (bool, error) {
 	if target.Username == "" || target.Password == "" {
-		return nil
+		return false, nil
 	}
 	expected := "Automatic login user: " + target.Username
 	script := strings.Join([]string{
 		"set -eu",
-		"if sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null; then exit 0; fi",
+		"if sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null; then printf 'already\\n'; exit 0; fi",
 		"printf '%s\\n' " + shellQuote(target.Password) + " | sudo -S sysadminctl -autologin set -userName " + shellQuote(target.Username) + " -password " + shellQuote(target.Password) + " -adminUser " + shellQuote(target.Username) + " -adminPassword " + shellQuote(target.Password) + " >/tmp/trybox-autologin.log 2>&1 || true",
 		"sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null",
+		"printf 'configured\\n'",
 	}, "\n")
+	var stdout bytes.Buffer
 	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", script}, backend.ExecOptions{
-		Stdout: io.Discard,
+		Stdout: &stdout,
 		Stderr: os.Stderr,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("macOS auto-login setup failed for %s; see /tmp/trybox-autologin.log in the guest", target.Username)
+		return false, fmt.Errorf("macOS auto-login setup failed for %s; see /tmp/trybox-autologin.log in the guest", target.Username)
 	}
-	return nil
+	return strings.Contains(stdout.String(), "configured"), nil
 }
