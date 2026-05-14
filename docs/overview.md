@@ -97,4 +97,5 @@ For the heavier Firefox OS integration path, use:
 That script runs the Firefox build plus the `os_integration` Marionette,
 Mochitest, and xpcshell suites through Trybox. It defaults to
 `TRYBOX_REPO`, `FIREFOX_REPO`, or `~/firefox`, and `TRYBOX_TARGET` or
-`macos15-arm64`.
+`macos15-arm64`. If `trybox` is not already on `PATH`, it builds a temporary
+local binary from this repository before running the check.
