@@ -54,45 +54,6 @@ func syncWorkspace(ctx context.Context, args []string) error {
 	return nil
 }
 
-func syncPlan(ctx context.Context, args []string) error {
-	fs, opts := commandFlags("sync-plan", flagSpec{Repo: true, JSON: true})
-	limit := fs.Int("limit", 5, "largest files/directories to show")
-	if handled, err := parseFlags(fs, args); handled || err != nil {
-		return err
-	}
-	_, config, err := loadStoreConfig()
-	if err != nil {
-		return err
-	}
-	repo, err := resolveRepo(opts.Repo, config)
-	if err != nil {
-		return err
-	}
-	plan, err := workspacepkg.BuildPlan(ctx, repo, *limit)
-	if err != nil {
-		return err
-	}
-	if opts.JSON {
-		return writeJSON(os.Stdout, plan)
-	}
-	fmt.Printf("repo: %s\nfiles: %d\nbytes: %s\nchanged tracked files: %d\nuntracked files: %d\nfingerprint: %s\n",
-		repo, plan.FileCount, humanBytes(plan.TotalBytes), len(plan.ChangedTracked), len(plan.Untracked), plan.Fingerprint)
-	printWarnings(plan.Warnings)
-	if len(plan.LargestFiles) > 0 {
-		fmt.Println("largest files:")
-		for _, file := range plan.LargestFiles {
-			fmt.Printf("  %8s %s\n", humanBytes(file.Size), file.Path)
-		}
-	}
-	if len(plan.LargestDirs) > 0 {
-		fmt.Println("largest directories:")
-		for _, dir := range plan.LargestDirs {
-			fmt.Printf("  %8s %s\n", humanBytes(dir.Size), dir.Path)
-		}
-	}
-	return nil
-}
-
 func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run) (syncResult, error) {
 	start := time.Now()
 	plan, err := workspacepkg.BuildPlan(ctx, workspaceState.RepoRoot, 10)

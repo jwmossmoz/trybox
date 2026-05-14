@@ -7,7 +7,6 @@ it. The short version is:
 cd ~/src/project
 trybox workspace use --target macos15-arm64
 trybox up
-trybox sync-plan
 trybox sync
 trybox run -- ./build-or-test-command
 trybox logs <run-id>
@@ -22,7 +21,6 @@ trybox logs <run-id>
 | Source checkout | The repository directory on the host. This is the code Trybox syncs into the guest. |
 | Workspace | Trybox state for one source checkout on one target. It records the target, source checkout path, workspace VM name, sync state, and run history links. |
 | Workspace VM | The disposable VM clone attached to a workspace. It can be stopped, restarted, or destroyed without deleting the host checkout. |
-| Sync plan | A preview of the files Trybox would copy into the guest, including tracked files, VCS metadata, and nonignored local files. |
 | Run | One command execution inside the guest workspace. Runs have durable logs, metadata, and an event stream. |
 | Run logs | Plain stdout/stderr files stored under Trybox state so they can be inspected after the command exits. |
 | Run events | A timestamped event stream for run lifecycle steps such as sync start, command start, and command finish. |
@@ -55,17 +53,7 @@ trybox logs <run-id>
    and records that runtime state. If the VM already exists and is running,
    `up` is mostly a readiness check.
 
-4. Preview the sync:
-
-   ```sh
-   trybox sync-plan
-   ```
-
-   `sync-plan` is read-only. It inspects the host checkout and shows the file
-   count, byte count, changed tracked files, untracked files, large entries, and
-   fingerprint. Use it before large first syncs.
-
-5. Sync the checkout into the guest:
+4. Sync the checkout into the guest:
 
    ```sh
    trybox sync
@@ -75,7 +63,7 @@ trybox logs <run-id>
    into the guest work path, records the sync fingerprint, and removes stale
    files that disappeared from the manifest.
 
-6. Run a command in the guest:
+5. Run a command in the guest:
 
    ```sh
    trybox run -- ./build-or-test-command test
@@ -84,7 +72,7 @@ trybox logs <run-id>
    `run` makes sure the VM is running, syncs first, then executes the command in
    the guest checkout. Use `--` to separate Trybox flags from the command.
 
-7. Inspect results:
+6. Inspect results:
 
    ```sh
    trybox history
@@ -93,7 +81,7 @@ trybox logs <run-id>
    trybox status
    ```
 
-8. Stop or delete the VM:
+7. Stop or delete the VM:
 
    ```sh
    trybox stop
@@ -116,7 +104,6 @@ trybox logs <run-id>
 | `trybox workspace unset` | Clears the default workspace pointer. | Does not start a VM. | Updates config only. Existing workspaces remain. |
 | `trybox up` | Creates and starts the selected workspace VM. | Creates the VM if missing, starts it if stopped, waits for IP. | Records last known IP and workspace resource settings. |
 | `trybox status` | Shows whether the selected workspace VM exists and is running. | Does not start a VM. | May refresh last known IP when the VM is running. |
-| `trybox sync-plan` | Previews the sync manifest and transfer size. | Does not start a VM. | Read-only. |
 | `trybox sync` | Copies the host checkout into the guest workspace. | Creates/starts the VM if needed. | Records sync fingerprint and timestamp. |
 | `trybox run -- <command>` | Syncs and runs a command inside the guest checkout. | Creates/starts the VM if needed. | Creates a run record, logs, events, and last-run pointer. |
 | `trybox history` | Lists recent runs. | Does not start a VM. | Read-only. |
@@ -135,7 +122,7 @@ trybox logs <run-id>
 | `--cpu n` | `workspace use`, `up` | Sets the CPU count for the workspace VM. Resource changes require destroying an existing VM first. |
 | `--memory-mb n` | `workspace use`, `up` | Sets VM memory in MiB. Resource changes require destroying an existing VM first. |
 | `--disk-gb n` | `workspace use`, `up` | Sets VM disk size in GiB. Resource changes require destroying an existing VM first. |
-| `--limit n` | `history`, `sync-plan` | Limits output. For `history`, it limits runs. For `sync-plan`, it limits large-file and large-directory previews. |
+| `--limit n` | `history` | Limits the number of runs shown. |
 | `--vnc` | `view` | Starts the workspace VM with Tart VNC display mode. |
 | `--no-open` | `view` | Prints connection details without opening a host GUI client. `--json` implies `--no-open`. |
 | `--reuse-client` | `view` | Accepted for compatibility with earlier command shapes. Trybox does not reset existing host GUI clients. |
@@ -149,10 +136,9 @@ no workspace default exists, Trybox detects the current Git repository.
 
 Use `workspace use` when you want Trybox to remember a checkout and target.
 Use `up` when you want the VM created and ready before doing anything else.
-Use `sync-plan` when you want to understand what would transfer before touching
-the VM. Use `sync` when you want the guest checkout updated but do not want to
-run a command yet. Use `run` for the usual test/build path because it includes
-the startup and sync steps.
+Use `sync` when you want the guest checkout updated but do not want to run a
+command yet. Use `run` for the usual test/build path because it includes the
+startup and sync steps.
 
 Use `stop` when you want to keep the VM disk around. Use `destroy` when you
 want the workspace VM removed and the next `up` to start from the target image

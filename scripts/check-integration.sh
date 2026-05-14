@@ -165,11 +165,6 @@ json_assert "$show_json" "data['workspace']['target'] == 'macos15-arm64'"
 list_json="$(run_json workspace-list workspace list --json)"
 json_assert "$list_json" "len(data['workspaces']) == 1 and data['workspaces'][0]['is_default']"
 
-plan_json="$(run_json sync-plan sync-plan --json)"
-json_assert "$plan_json" "'tracked.txt' in data['changed_tracked']"
-json_assert "$plan_json" "'untracked.txt' in data['untracked']"
-json_assert "$plan_json" "'excluded.txt' in data['excluded']"
-
 status_json="$(run_json status status --json)"
 json_assert "$status_json" "data['exists'] is False and data['running'] is False"
 

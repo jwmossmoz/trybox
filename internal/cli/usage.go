@@ -145,11 +145,6 @@ Usage:
 Usage:
   trybox sync [--target name] [--json]
 `,
-		"sync-plan": `trybox sync-plan: preview the manifest and transfer size
-
-Usage:
-  trybox sync-plan [--limit n] [--json]
-`,
 		"task": `trybox task: inspect or replay a Taskcluster task
 
 Usage:
@@ -244,7 +239,6 @@ Usage:
   trybox status [--target name] [--json]
   trybox stop [--target name] [--json]
   trybox sync [--target name] [--json]
-  trybox sync-plan [--limit n] [--json]
   trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
   trybox target list [--json]
   trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
