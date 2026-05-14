@@ -113,7 +113,7 @@ workflow should still use Trybox targets, not Tart image names.
 Before `trybox bootstrap` exists, build the default local target image with:
 
 ```sh
-scripts/build-local-macos-image.sh --replace
+ci/build-local-macos-image.sh --replace
 ```
 
 The script runs `packer init`, `packer validate`, and `packer build` against
@@ -127,7 +127,7 @@ Use it with an explicit IPSW path or URL when the target default is not the
 macOS build you want:
 
 ```sh
-scripts/build-local-macos-image.sh --ipsw /path/to/UniversalMac_15.x_Restore.ipsw --replace
+ci/build-local-macos-image.sh --ipsw /path/to/UniversalMac_15.x_Restore.ipsw --replace
 ```
 
 The provision scripts intentionally mirror the useful parts of Cirrus Labs'

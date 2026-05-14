@@ -18,7 +18,7 @@ HEADLESS="${TRYBOX_IMAGE_HEADLESS:-false}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/build-local-macos-image.sh [options]
+Usage: ci/build-local-macos-image.sh [options]
 
 Build a local Tart image for trybox from a fresh macOS IPSW with Packer.
 

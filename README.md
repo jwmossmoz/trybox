@@ -38,7 +38,7 @@ Build the default local Tart image from a fresh macOS restore image until
 `trybox bootstrap` exists:
 
 ```sh
-scripts/build-local-macos-image.sh --replace
+ci/build-local-macos-image.sh --replace
 ```
 
 The script wraps a small Packer Tart template. It creates the VM from an IPSW,
@@ -116,7 +116,7 @@ When handing Trybox work to an agent, paste a single quoted prompt like this and
 replace `<checkout>` and `<command>`:
 
 ```sh
-'Use Trybox for <checkout>: install missing deps (`brew install go packer cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `scripts/build-local-macos-image.sh --replace`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
+'Use Trybox for <checkout>: install missing deps (`brew install go packer cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `ci/build-local-macos-image.sh --replace`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
 ```
 
 ## Commands
