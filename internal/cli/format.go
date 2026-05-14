@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jwmossmoz/trybox/internal/state"
 	"github.com/jwmossmoz/trybox/internal/targets"
@@ -56,20 +57,25 @@ func viewWorkspace(workspace state.Workspace) workspaceView {
 }
 
 func viewRun(run state.Run) runView {
-	return runView{
-		ID:        run.ID,
-		Target:    run.Target,
-		RepoRoot:  run.RepoRoot,
-		VMName:    run.VMName,
-		Command:   run.Command,
-		StartedAt: run.StartedAt,
-		EndedAt:   run.EndedAt,
-		ExitCode:  run.ExitCode,
-		OutputLog: run.OutputLog,
-		StdoutLog: run.StdoutLog,
-		StderrLog: run.StderrLog,
-		EventsLog: run.EventsLog,
+	view := runView{
+		ID:            run.ID,
+		Target:        run.Target,
+		RepoRoot:      run.RepoRoot,
+		VMName:        run.VMName,
+		Command:       run.Command,
+		CommandString: shellJoin(run.Command),
+		StartedAt:     run.StartedAt,
+		EndedAt:       run.EndedAt,
+		ExitCode:      run.ExitCode,
+		OutputLog:     run.OutputLog,
+		StdoutLog:     run.StdoutLog,
+		StderrLog:     run.StderrLog,
+		EventsLog:     run.EventsLog,
 	}
+	if !run.EndedAt.IsZero() {
+		view.Duration = run.EndedAt.Sub(run.StartedAt).Round(time.Millisecond).String()
+	}
+	return view
 }
 
 func writeJSON(w io.Writer, value any) error {

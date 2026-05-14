@@ -20,6 +20,9 @@ import (
 	"github.com/jwmossmoz/trybox/internal/workspace"
 )
 
+const syncHeartbeatInterval = 15 * time.Second
+const syncRetryHintAfter = 3 * time.Minute
+
 func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run, progress io.Writer) (syncResult, error) {
 	start := time.Now()
 	plan, err := workspace.BuildPlan(ctx, workspaceState.RepoRoot, 10)
@@ -66,6 +69,9 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 		}
 		if run != nil {
 			_ = store.AppendEvent(*run, "sync_finished", result)
+		}
+		if progress != nil {
+			fmt.Fprintf(progress, "sync up to date: %d files, %s\n", plan.FileCount, humanBytes(plan.TotalBytes))
 		}
 		return result, nil
 	}
@@ -114,7 +120,7 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 	progressOut := &newlineTrackingWriter{w: progress}
 	cmd.Stdout = progressOut
 	cmd.Stderr = progressOut
-	if err := cmd.Run(); err != nil {
+	if err := runWithSyncHeartbeat(cmd, progressOut, progress, time.Now(), syncRecoveryHint(workspaceState.Target, workspaceState.RepoRoot)); err != nil {
 		progressOut.Finish()
 		return result, fmt.Errorf("rsync failed: %w", err)
 	}
@@ -126,6 +132,9 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 		return result, err
 	}
 	result.Duration = time.Since(start).Round(time.Millisecond).String()
+	if progress != nil {
+		fmt.Fprintf(progress, "synced: %d files, %s in %s\n", plan.FileCount, humanBytes(plan.TotalBytes), result.Duration)
+	}
 	workspaceState.SyncFingerprint = plan.Fingerprint
 	workspaceState.LastSyncAt = time.Now().UTC()
 	if err := store.SaveWorkspace(*workspaceState); err != nil {
@@ -196,6 +205,43 @@ func writeRemoteManifest(ctx context.Context, target targets.Target, ip string, 
 		return fmt.Errorf("rsync remote manifest failed: %w", err)
 	}
 	return nil
+}
+
+func runWithSyncHeartbeat(cmd *exec.Cmd, progressOut *newlineTrackingWriter, progress io.Writer, transferStart time.Time, recoveryHint string) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	wait := make(chan error, 1)
+	go func() {
+		wait <- cmd.Wait()
+	}()
+
+	var ticks <-chan time.Time
+	var ticker *time.Ticker
+	if progress != nil {
+		ticker = time.NewTicker(syncHeartbeatInterval)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
+
+	for {
+		select {
+		case err := <-wait:
+			return err
+		case <-ticks:
+			progressOut.Finish()
+			elapsed := time.Since(transferStart).Round(time.Second)
+			if elapsed >= syncRetryHintAfter {
+				fmt.Fprintf(progress, "syncing: still copying after %s; if this stalls, cancel and run: %s\n", elapsed, recoveryHint)
+			} else {
+				fmt.Fprintf(progress, "syncing: still copying after %s\n", elapsed)
+			}
+		}
+	}
+}
+
+func syncRecoveryHint(targetName, repoRoot string) string {
+	return "trybox destroy --target " + shellQuote(targetName) + " --repo " + shellQuote(repoRoot)
 }
 
 type newlineTrackingWriter struct {

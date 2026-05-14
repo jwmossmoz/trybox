@@ -43,6 +43,13 @@ func runCommand(ctx context.Context, args []string) error {
 		if err := store.SaveRun(run); err != nil {
 			return err
 		}
+		if !opts.JSON {
+			fmt.Fprintln(os.Stderr, "run context:")
+			fmt.Fprintf(os.Stderr, "  run=%s logs=trybox logs %s events=trybox events %s\n", run.ID, run.ID, run.ID)
+			fmt.Fprintf(os.Stderr, "  target=%s vm=%s repo=%s\n", workspace.Target, workspace.VMName, workspace.RepoRoot)
+			fmt.Fprintf(os.Stderr, "  workdir=%s\n", remoteWorkPath(target))
+			fmt.Fprintf(os.Stderr, "vm:        ensuring %s\n", workspace.VMName)
+		}
 		_ = store.AppendEvent(run, "vm_ensure_started", nil)
 		if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
 			run.EndedAt = time.Now().UTC()
@@ -52,7 +59,12 @@ func runCommand(ctx context.Context, args []string) error {
 			return err
 		}
 		_ = store.AppendEvent(run, "vm_ensure_finished", map[string]any{"vm_name": workspace.VMName, "ip": workspace.LastKnownIP})
-		if _, err := syncWorkspaceState(ctx, target, &workspace, b, store, &run, os.Stderr); err != nil {
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "vm:        running %s ip=%s\n", workspace.VMName, workspace.LastKnownIP)
+			fmt.Fprintf(os.Stderr, "sync:      preparing checkout\n")
+		}
+		syncResult, err := syncWorkspaceState(ctx, target, &workspace, b, store, &run, os.Stderr)
+		if err != nil {
 			run.EndedAt = time.Now().UTC()
 			run.ExitCode = -1
 			_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "sync", "error": err.Error()})
@@ -77,6 +89,10 @@ func runCommand(ctx context.Context, args []string) error {
 		defer stderr.Close()
 
 		_ = store.AppendEvent(run, "command_started", map[string]any{"command": command})
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "command:   %s\n", shellJoin(command))
+		}
+		commandStarted := time.Now()
 		commandStdout := io.Writer(stdout)
 		if !opts.JSON {
 			commandStdout = io.MultiWriter(os.Stdout, stdout)
@@ -87,6 +103,7 @@ func runCommand(ctx context.Context, args []string) error {
 			Stdout:  commandStdout,
 			Stderr:  io.MultiWriter(os.Stderr, stderr, output),
 		})
+		commandDuration := time.Since(commandStarted).Round(time.Millisecond)
 		run.EndedAt = time.Now().UTC()
 		run.ExitCode = exitCode
 		_ = store.AppendEvent(run, "command_finished", map[string]any{"exit_code": exitCode})
@@ -95,8 +112,15 @@ func runCommand(ctx context.Context, args []string) error {
 		}
 		workspace.LastRunLog = store.RunDir(run.ID)
 		_ = store.SaveWorkspace(workspace)
+		runOut := viewRun(run)
+		runOut.Sync = &syncResult
+		runOut.CommandDuration = commandDuration.String()
 		if opts.JSON {
-			_ = writeJSON(os.Stdout, viewRun(run))
+			_ = writeJSON(os.Stdout, runOut)
+		}
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "summary:   sync=%s command=%s total=%s exit=%d\n", syncResult.Duration, commandDuration, runOut.Duration, exitCode)
+			fmt.Fprintf(os.Stderr, "logs:      trybox logs %s\n", run.ID)
 		}
 		if execErr != nil {
 			return execErr
@@ -114,48 +138,87 @@ func logs(ctx context.Context, args []string) error {
 		_ = ctx
 		return nil
 	}
-	if len(args) > 1 {
-		return fmt.Errorf("usage: trybox logs [run-id]")
+	jsonOut := false
+	runID := ""
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOut = true
+		default:
+			if strings.HasPrefix(arg, "-") || runID != "" {
+				return fmt.Errorf("usage: trybox logs [run-id] [--json]")
+			}
+			runID = arg
+		}
 	}
 	store, err := state.DefaultStore()
 	if err != nil {
 		return err
 	}
-	runID := ""
-	if len(args) == 1 {
-		runID = args[0]
-	} else {
+	if runID == "" {
 		runID, err = latestRunID(store)
 		if err != nil {
 			return err
 		}
 	}
-	if err := printLogFile(filepath.Join(store.RunDir(runID), "output.log")); err == nil {
-		_ = ctx
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for _, name := range []string{"stdout.log", "stderr.log"} {
-		path := filepath.Join(store.RunDir(runID), name)
-		if err := printLogFile(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	_ = ctx
-	return nil
-}
-
-func printLogFile(path string) error {
-	data, err := os.ReadFile(path)
+	output, err := readRunOutput(store, runID)
 	if err != nil {
 		return err
 	}
-	if len(data) == 0 {
+	if jsonOut {
+		out := logView{
+			RunID:     runID,
+			Output:    string(output),
+			OutputLog: filepath.Join(store.RunDir(runID), "output.log"),
+			StdoutLog: filepath.Join(store.RunDir(runID), "stdout.log"),
+			StderrLog: filepath.Join(store.RunDir(runID), "stderr.log"),
+		}
+		if run, err := readRun(store, runID); err == nil {
+			view := viewRun(run)
+			out.Run = &view
+		}
+		_ = ctx
+		return writeJSON(os.Stdout, out)
+	}
+	if len(output) == 0 {
+		_ = ctx
 		return nil
 	}
-	_, err = os.Stdout.Write(data)
+	_, err = os.Stdout.Write(output)
+	_ = ctx
 	return err
+}
+
+func readRunOutput(store state.Store, runID string) ([]byte, error) {
+	if data, err := os.ReadFile(filepath.Join(store.RunDir(runID), "output.log")); err == nil {
+		return data, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	var output []byte
+	for _, name := range []string{"stdout.log", "stderr.log"} {
+		data, err := os.ReadFile(filepath.Join(store.RunDir(runID), name))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		output = append(output, data...)
+	}
+	return output, nil
+}
+
+func readRun(store state.Store, runID string) (state.Run, error) {
+	data, err := os.ReadFile(filepath.Join(store.RunDir(runID), "meta.json"))
+	if err != nil {
+		return state.Run{}, err
+	}
+	var run state.Run
+	if err := json.Unmarshal(data, &run); err != nil {
+		return state.Run{}, err
+	}
+	return run, nil
 }
 
 func latestRunID(store state.Store) (string, error) {
@@ -171,12 +234,8 @@ func latestRunID(store state.Store) (string, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(store.RunDir(entry.Name()), "meta.json"))
+		run, err := readRun(store, entry.Name())
 		if err != nil {
-			continue
-		}
-		var run state.Run
-		if err := json.Unmarshal(data, &run); err != nil {
 			continue
 		}
 		if latest.ID == "" || run.StartedAt.After(latest.StartedAt) {
@@ -220,11 +279,6 @@ func events(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !jsonOut {
-		_, err = os.Stdout.Write(data)
-		_ = ctx
-		return err
-	}
 	var out []map[string]any
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
@@ -237,8 +291,34 @@ func events(ctx context.Context, args []string) error {
 	if err := scanner.Err(); err != nil {
 		return err
 	}
+	if !jsonOut {
+		for _, event := range out {
+			fmt.Printf("%-30s %-20s %-8s %s\n", stringField(event, "ts"), stringField(event, "type"), stringField(event, "phase"), eventPayloadSummary(event))
+		}
+		_ = ctx
+		return nil
+	}
 	_ = ctx
 	return writeJSON(os.Stdout, out)
+}
+
+func stringField(value map[string]any, name string) string {
+	if s, ok := value[name].(string); ok {
+		return s
+	}
+	return ""
+}
+
+func eventPayloadSummary(event map[string]any) string {
+	payload, ok := event["payload"]
+	if !ok || payload == nil {
+		return ""
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func history(ctx context.Context, args []string) error {

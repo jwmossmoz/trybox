@@ -28,10 +28,16 @@ func view(ctx context.Context, args []string) error {
 		return err
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "vm:        ensuring %s\n", workspace.VMName)
+		}
 		if err := b.Create(ctx, target, workspace); err != nil {
 			return err
 		}
 		if !b.IsRunning(ctx, workspace.VMName) {
+			if !opts.JSON {
+				fmt.Fprintln(os.Stderr, "vm:        starting headless for setup")
+			}
 			if err := b.Start(ctx, target, workspace, backend.StartOptions{Headless: true}); err != nil {
 				return err
 			}
@@ -39,10 +45,16 @@ func view(ctx context.Context, args []string) error {
 		if _, err := b.IP(ctx, workspace, 120); err != nil {
 			return err
 		}
+		if !opts.JSON {
+			fmt.Fprintln(os.Stderr, "login:     ensuring auto-login")
+		}
 		if err := ensureAutoLogin(ctx, target, workspace, b); err != nil {
 			return err
 		}
 		if b.IsRunning(ctx, workspace.VMName) {
+			if !opts.JSON {
+				fmt.Fprintln(os.Stderr, "vm:        restarting for display mode")
+			}
 			if err := b.Stop(ctx, workspace); err != nil {
 				return err
 			}
@@ -54,6 +66,9 @@ func view(ctx context.Context, args []string) error {
 		}
 		if err := b.Start(ctx, target, workspace, backend.StartOptions{VNC: opts.VNC}); err != nil {
 			return err
+		}
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "display:   starting %s\n", viewDisplayName(opts.VNC))
 		}
 		ip, err := b.IP(ctx, workspace, 120)
 		if err != nil {

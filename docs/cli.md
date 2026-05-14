@@ -78,10 +78,10 @@ Passing `--target` to a VM-backed command records it as the next default target.
 | --- | --- | --- |
 | `trybox doctor` | Checks local tools and the selected target image. | Does not start a VM. |
 | `trybox target list` | Lists built-in target names and target image status. | Does not start a VM. |
-| `trybox run -- <command>` | Starts the VM if needed, syncs the checkout, and runs a command. | Creates/starts the VM if needed. |
-| `trybox logs [run-id]` | Prints the combined command log. Without a run id, uses the latest run. | Does not start a VM. |
+| `trybox run -- <command>` | Starts the VM if needed, syncs the checkout, streams the command, and prints phase/timing context. | Creates/starts the VM if needed. |
+| `trybox logs [run-id] [--json]` | Prints the combined command log. `--json` includes content and log paths for agents. | Does not start a VM. |
 | `trybox history` | Lists recent runs. | Does not start a VM. |
-| `trybox events <run-id>` | Prints a run event stream. | Does not start a VM. |
+| `trybox events <run-id>` | Prints formatted run events; `--json` returns event records. | Does not start a VM. |
 | `trybox status` | Shows whether the selected VM exists and is running. | Does not start a VM. |
 | `trybox view` | Opens the VM through Tart's native display. | Restarts the VM in native display mode. |
 | `trybox view --vnc` | Starts Tart's VNC server and prints the localhost endpoint. | Restarts the VM in Tart VNC mode. |
@@ -129,6 +129,6 @@ Use `--json` for scripts, automation, and agent workflows. JSON output is meant
 to be stable enough for tooling, while human output can change to become more
 readable.
 
-Commands that run guest processes may still write diagnostics and sync status
-to stderr. Automation should read structured results from stdout and treat
-stderr as diagnostics.
+Commands that run guest processes write Trybox phase/status lines and command
+stderr to stderr. Guest stdout stays on stdout. Automation should read
+structured results from stdout and treat stderr as diagnostics.

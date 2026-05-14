@@ -56,6 +56,9 @@ func destroy(ctx context.Context, args []string) error {
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {
 		vmExisted := b.Exists(ctx, workspace.VMName)
+		if !opts.JSON {
+			fmt.Printf("vm:                      deleting %s\n", workspace.VMName)
+		}
 		if err := b.Destroy(ctx, workspace); err != nil {
 			return err
 		}

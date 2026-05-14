@@ -56,16 +56,29 @@ type workspaceView struct {
 }
 
 type runView struct {
-	ID        string    `json:"id"`
-	Target    string    `json:"target"`
-	RepoRoot  string    `json:"repo_root"`
-	VMName    string    `json:"vm_name"`
-	Command   []string  `json:"command"`
-	StartedAt time.Time `json:"started_at"`
-	EndedAt   time.Time `json:"ended_at,omitempty"`
-	ExitCode  int       `json:"exit_code"`
-	OutputLog string    `json:"output_log"`
-	StdoutLog string    `json:"stdout_log"`
-	StderrLog string    `json:"stderr_log"`
-	EventsLog string    `json:"events_log"`
+	ID              string      `json:"id"`
+	Target          string      `json:"target"`
+	RepoRoot        string      `json:"repo_root"`
+	VMName          string      `json:"vm_name"`
+	Command         []string    `json:"command"`
+	CommandString   string      `json:"command_string"`
+	StartedAt       time.Time   `json:"started_at"`
+	EndedAt         time.Time   `json:"ended_at,omitempty"`
+	Duration        string      `json:"duration,omitempty"`
+	Sync            *syncResult `json:"sync,omitempty"`
+	CommandDuration string      `json:"command_duration,omitempty"`
+	ExitCode        int         `json:"exit_code"`
+	OutputLog       string      `json:"output_log"`
+	StdoutLog       string      `json:"stdout_log"`
+	StderrLog       string      `json:"stderr_log"`
+	EventsLog       string      `json:"events_log"`
+}
+
+type logView struct {
+	RunID     string   `json:"run_id"`
+	Run       *runView `json:"run,omitempty"`
+	Output    string   `json:"output"`
+	OutputLog string   `json:"output_log"`
+	StdoutLog string   `json:"stdout_log"`
+	StderrLog string   `json:"stderr_log"`
 }

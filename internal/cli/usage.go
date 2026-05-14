@@ -53,7 +53,7 @@ Usage:
 		"logs": `trybox logs: print command output for a run
 
 Usage:
-  trybox logs [run-id]
+  trybox logs [run-id] [--json]
 
 Notes:
   Without a run id, prints the latest run log.
@@ -104,7 +104,7 @@ Usage:
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
   trybox history [--limit n] [--json]
-  trybox logs [run-id]
+  trybox logs [run-id] [--json]
   trybox run [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] -- <command>
   trybox status [--target name] [--repo path] [--json]
   trybox target list [--json]

@@ -236,6 +236,8 @@ func (s Store) AppendEvent(run Run, event string, payload any) error {
 	entry := map[string]any{
 		"ts":    time.Now().UTC().Format(time.RFC3339Nano),
 		"event": event,
+		"type":  event,
+		"phase": eventPhase(event),
 	}
 	if payload != nil {
 		entry["payload"] = payload
@@ -246,6 +248,21 @@ func (s Store) AppendEvent(run Run, event string, payload any) error {
 	}
 	_, err = fmt.Fprintln(f, string(data))
 	return err
+}
+
+func eventPhase(event string) string {
+	switch {
+	case strings.HasPrefix(event, "vm_"):
+		return "vm"
+	case strings.HasPrefix(event, "sync_"):
+		return "sync"
+	case strings.HasPrefix(event, "command_"):
+		return "command"
+	case strings.HasPrefix(event, "run_"):
+		return "run"
+	default:
+		return "event"
+	}
 }
 
 func (s Store) LockWorkspace(ctx context.Context, id string) (*WorkspaceLock, error) {
