@@ -53,6 +53,8 @@ scripts/check-integration.sh
 The default check runs `go test ./...`, builds `trybox`, and exercises the
 PR-safe CLI workflow against an isolated temporary `HOME` and disposable git
 fixture. It does not require Tart or a local target image.
+The script prints each host and Trybox command before running it so saved logs
+show exactly which step was active.
 
 To include the VM-backed workflow on a host with Tart and a local target image:
 
