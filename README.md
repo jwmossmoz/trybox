@@ -1,6 +1,7 @@
 # Trybox
 
-> **Beta:** Trybox is early and expected to break. Use it with caution for now,
+> [!WARNING]
+> Trybox is early beta and expected to break. Use it with caution for now,
 > especially around local VM state, source sync, and long-running commands.
 
 Run a dirty checkout in a clean local VM.
