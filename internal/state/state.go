@@ -25,11 +25,9 @@ type Store struct {
 }
 
 type Config struct {
-	SchemaVersion      int       `json:"schema_version"`
-	DefaultTarget      string    `json:"default_target,omitempty"`
-	DefaultRepoRoot    string    `json:"default_repo_root,omitempty"`
-	DefaultWorkspaceID string    `json:"default_workspace_id,omitempty"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	SchemaVersion int       `json:"schema_version"`
+	DefaultTarget string    `json:"default_target,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Workspace struct {
@@ -62,6 +60,7 @@ type Run struct {
 	StartedAt     time.Time `json:"started_at"`
 	EndedAt       time.Time `json:"ended_at,omitempty"`
 	ExitCode      int       `json:"exit_code"`
+	OutputLog     string    `json:"output_log"`
 	StdoutLog     string    `json:"stdout_log"`
 	StderrLog     string    `json:"stderr_log"`
 	EventsLog     string    `json:"events_log"`
@@ -211,6 +210,7 @@ func (s Store) NewRun(workspace Workspace, command []string) (Run, error) {
 		Command:       command,
 		StartedAt:     time.Now().UTC(),
 		ExitCode:      -1,
+		OutputLog:     filepath.Join(dir, "output.log"),
 		StdoutLog:     filepath.Join(dir, "stdout.log"),
 		StderrLog:     filepath.Join(dir, "stderr.log"),
 		EventsLog:     filepath.Join(dir, "events.ndjson"),

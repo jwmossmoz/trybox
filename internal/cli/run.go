@@ -16,11 +16,10 @@ import (
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/state"
-	workspacepkg "github.com/jwmossmoz/trybox/internal/workspace"
 )
 
 func runCommand(ctx context.Context, args []string) error {
-	fs, opts := commandFlags("run", flagSpec{Target: true, Repo: true, JSON: true})
+	fs, opts := commandFlags("run", flagSpec{Target: true, Repo: true, JSON: true, Resources: true})
 	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
 	}
@@ -31,15 +30,8 @@ func runCommand(ctx context.Context, args []string) error {
 	if len(command) == 0 {
 		return fmt.Errorf("usage: trybox run [options] -- <command>")
 	}
-	return runWorkspaceCommand(ctx, opts, command, nil)
-}
-
-func runWorkspaceCommand(ctx context.Context, opts *options, command []string, extra map[string]any) error {
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {
-		return err
-	}
-	if err := workspacepkg.ValidateRepoRoot(workspace.RepoRoot); err != nil {
 		return err
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {
@@ -47,24 +39,20 @@ func runWorkspaceCommand(ctx context.Context, opts *options, command []string, e
 		if err != nil {
 			return err
 		}
-		created := map[string]any{"command": command}
-		for key, value := range extra {
-			created[key] = value
-		}
-		_ = store.AppendEvent(run, "run_created", created)
+		_ = store.AppendEvent(run, "run_created", map[string]any{"command": command})
 		if err := store.SaveRun(run); err != nil {
 			return err
 		}
-		_ = store.AppendEvent(run, "workspace_ensure_started", nil)
+		_ = store.AppendEvent(run, "vm_ensure_started", nil)
 		if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
 			run.EndedAt = time.Now().UTC()
 			run.ExitCode = -1
-			_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "workspace_ensure", "error": err.Error()})
+			_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "vm_ensure", "error": err.Error()})
 			_ = store.SaveRun(run)
 			return err
 		}
-		_ = store.AppendEvent(run, "workspace_ensure_finished", map[string]any{"vm_name": workspace.VMName, "ip": workspace.LastKnownIP})
-		if _, err := syncWorkspaceState(ctx, target, &workspace, b, store, &run); err != nil {
+		_ = store.AppendEvent(run, "vm_ensure_finished", map[string]any{"vm_name": workspace.VMName, "ip": workspace.LastKnownIP})
+		if _, err := syncWorkspaceState(ctx, target, &workspace, b, store, &run, os.Stderr); err != nil {
 			run.EndedAt = time.Now().UTC()
 			run.ExitCode = -1
 			_ = store.AppendEvent(run, "run_failed", map[string]any{"phase": "sync", "error": err.Error()})
@@ -72,6 +60,11 @@ func runWorkspaceCommand(ctx context.Context, opts *options, command []string, e
 			return err
 		}
 
+		output, err := os.OpenFile(run.OutputLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		defer output.Close()
 		stdout, err := os.OpenFile(run.StdoutLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {
 			return err
@@ -88,10 +81,11 @@ func runWorkspaceCommand(ctx context.Context, opts *options, command []string, e
 		if !opts.JSON {
 			commandStdout = io.MultiWriter(os.Stdout, stdout)
 		}
+		commandStdout = io.MultiWriter(commandStdout, output)
 		exitCode, execErr := b.Exec(ctx, target, workspace, command, backend.ExecOptions{
 			Workdir: remoteWorkPath(target),
 			Stdout:  commandStdout,
-			Stderr:  io.MultiWriter(os.Stderr, stderr),
+			Stderr:  io.MultiWriter(os.Stderr, stderr, output),
 		})
 		run.EndedAt = time.Now().UTC()
 		run.ExitCode = exitCode
@@ -120,229 +114,79 @@ func logs(ctx context.Context, args []string) error {
 		_ = ctx
 		return nil
 	}
-	runID, opts, err := parseLogsArgs(args)
-	if err != nil {
-		return err
-	}
-	if opts.FromEnd && !opts.Follow {
-		return fmt.Errorf("--from-end requires --follow")
+	if len(args) > 1 {
+		return fmt.Errorf("usage: trybox logs [run-id]")
 	}
 	store, err := state.DefaultStore()
 	if err != nil {
 		return err
 	}
-	if opts.Follow {
-		return followRunLogs(ctx, os.Stdout, store, runID, logFollowOptions{FromEnd: opts.FromEnd})
-	}
-	return printRunLogsOnce(os.Stdout, store, runID)
-}
-
-type logsOptions struct {
-	Follow  bool
-	FromEnd bool
-}
-
-type logFollowOptions struct {
-	FromEnd bool
-}
-
-func parseLogsArgs(args []string) (string, logsOptions, error) {
-	var opts logsOptions
 	runID := ""
-	for _, arg := range args {
-		switch arg {
-		case "--follow", "-f":
-			opts.Follow = true
-		case "--from-end":
-			opts.FromEnd = true
-		default:
-			if strings.HasPrefix(arg, "-") || runID != "" {
-				return "", logsOptions{}, fmt.Errorf("usage: trybox logs <run-id> [--follow|-f] [--from-end]")
-			}
-			runID = arg
+	if len(args) == 1 {
+		runID = args[0]
+	} else {
+		runID, err = latestRunID(store)
+		if err != nil {
+			return err
 		}
 	}
-	if runID == "" {
-		return "", logsOptions{}, fmt.Errorf("usage: trybox logs <run-id> [--follow|-f] [--from-end]")
+	if err := printLogFile(filepath.Join(store.RunDir(runID), "output.log")); err == nil {
+		_ = ctx
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	return runID, opts, nil
-}
-
-func printRunLogsOnce(w io.Writer, store state.Store, runID string) error {
 	for _, name := range []string{"stdout.log", "stderr.log"} {
 		path := filepath.Join(store.RunDir(runID), name)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return err
-		}
-		if len(data) == 0 {
-			continue
-		}
-		if _, err := w.Write(data); err != nil {
+		if err := printLogFile(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
+	_ = ctx
 	return nil
 }
 
-func followRunLogs(ctx context.Context, w io.Writer, store state.Store, runID string, opts logFollowOptions) error {
-	if _, err := loadRun(store, runID); err != nil {
-		return fmt.Errorf("load run %q: %w", runID, err)
-	}
-	stdoutOffset := int64(-1)
-	stderrOffset := int64(-1)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, opts.FromEnd); err != nil {
-			return err
-		}
-		if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, opts.FromEnd); err != nil {
-			return err
-		}
-		completion, err := runCompletion(store, runID)
-		if err != nil {
-			return err
-		}
-		if completion.Done {
-			if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, false); err != nil {
-				return err
-			}
-			if err := copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, false); err != nil {
-				return err
-			}
-			if completion.ExitCode != 0 {
-				return exitError{Code: normalizedExitCode(completion.ExitCode)}
-			}
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			_ = copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stdout.log"), &stdoutOffset, false)
-			_ = copyAvailableLog(w, filepath.Join(store.RunDir(runID), "stderr.log"), &stderrOffset, false)
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-func copyAvailableLog(w io.Writer, path string, offset *int64, fromEnd bool) error {
-	info, err := os.Stat(path)
+func printLogFile(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		return err
 	}
-	if *offset < 0 {
-		if fromEnd {
-			*offset = info.Size()
-			return nil
-		}
-		*offset = 0
-	}
-	if info.Size() < *offset {
-		*offset = 0
-	}
-	if info.Size() == *offset {
+	if len(data) == 0 {
 		return nil
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err := file.Seek(*offset, io.SeekStart); err != nil {
-		return err
-	}
-	n, err := io.Copy(w, file)
-	*offset += n
+	_, err = os.Stdout.Write(data)
 	return err
 }
 
-type runCompletionState struct {
-	Done     bool
-	ExitCode int
-}
-
-func runCompletion(store state.Store, runID string) (runCompletionState, error) {
-	run, err := loadRun(store, runID)
-	if err != nil {
-		return runCompletionState{}, err
-	}
-	if !run.EndedAt.IsZero() {
-		return runCompletionState{Done: true, ExitCode: run.ExitCode}, nil
-	}
-	exitCode, ok, err := commandFinishedExitCode(run.EventsLog)
-	if err != nil {
-		return runCompletionState{}, err
-	}
-	if ok {
-		return runCompletionState{Done: true, ExitCode: exitCode}, nil
-	}
-	return runCompletionState{}, nil
-}
-
-func loadRun(store state.Store, runID string) (state.Run, error) {
-	data, err := os.ReadFile(filepath.Join(store.RunDir(runID), "meta.json"))
-	if err != nil {
-		return state.Run{}, err
-	}
-	var run state.Run
-	if err := json.Unmarshal(data, &run); err != nil {
-		return state.Run{}, err
-	}
-	return run, nil
-}
-
-func commandFinishedExitCode(path string) (int, bool, error) {
-	data, err := os.ReadFile(path)
+func latestRunID(store state.Store) (string, error) {
+	entries, err := os.ReadDir(store.RunsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return 0, false, nil
+			return "", fmt.Errorf("no runs found")
 		}
-		return 0, false, err
+		return "", err
 	}
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		var event struct {
-			Event   string         `json:"event"`
-			Payload map[string]any `json:"payload"`
-		}
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			return 0, false, err
-		}
-		if event.Event != "command_finished" {
+	var latest state.Run
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
-		value, ok := event.Payload["exit_code"]
-		if !ok {
-			return 0, true, nil
+		data, err := os.ReadFile(filepath.Join(store.RunDir(entry.Name()), "meta.json"))
+		if err != nil {
+			continue
 		}
-		switch value := value.(type) {
-		case float64:
-			return int(value), true, nil
-		case int:
-			return value, true, nil
-		default:
-			return 0, false, fmt.Errorf("command_finished exit_code has unexpected type %T", value)
+		var run state.Run
+		if err := json.Unmarshal(data, &run); err != nil {
+			continue
+		}
+		if latest.ID == "" || run.StartedAt.After(latest.StartedAt) {
+			latest = run
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return 0, false, err
+	if latest.ID == "" {
+		return "", fmt.Errorf("no runs found")
 	}
-	return 0, false, nil
-}
-
-func normalizedExitCode(code int) int {
-	if code <= 0 {
-		return 1
-	}
-	return code
+	return latest.ID, nil
 }
 
 func events(ctx context.Context, args []string) error {

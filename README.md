@@ -1,18 +1,19 @@
 # Trybox
 
-Clean local VM workspaces for source debugging.
+Run a dirty checkout in a clean local VM.
 
-Trybox is a local counterpart to the "try it somewhere clean" workflow: sync a
-dirty checkout into a fresh VM, run the command there, and keep durable logs.
-The first backend is Tart on Apple Silicon macOS.
+Trybox is a local counterpart to the "try it somewhere clean" workflow: it
+syncs your current checkout into a local VM, runs the command there, streams
+output, and keeps durable logs. The first backend is Tart on Apple Silicon
+macOS.
 
 ## What It Does
 
-- Creates repo-bound workspace VMs from local target images.
-- Syncs tracked files, VCS metadata, and nonignored local changes.
+- Creates and reuses a VM for the selected repo and target.
+- Syncs tracked files, VCS metadata, and nonignored local changes before each run.
 - Runs checkout-local commands in the guest.
-- Opens a desktop through Tart's native window or Tart VNC.
-- Stores run logs, events, and workspace state under `~/.trybox`.
+- Opens the VM desktop through Tart's native window or Tart VNC.
+- Stores run logs, events, and VM state under `~/.trybox`.
 
 ## Quick Start
 
@@ -24,88 +25,55 @@ Prerequisites:
 - Source checkout on the host
 
 ```sh
-go build -o /tmp/trybox ./cmd/trybox
-cd ~/src/project
-/tmp/trybox doctor
-/tmp/trybox target list
+go run ./cmd/trybox doctor
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
-/tmp/trybox workspace use --target macos15-arm64 --cpu 10 --memory-mb 24576 --disk-gb 100
-/tmp/trybox up
-/tmp/trybox sync
-/tmp/trybox run -- env
+go run ./cmd/trybox run --target macos15-arm64 -- env
+go run ./cmd/trybox logs
+go run ./cmd/trybox view --vnc
 ```
 
 Build a local binary when the command shape is stable enough for repeated use:
 
 ```sh
 go build -o trybox ./cmd/trybox
-./trybox status
+./trybox run -- ./build-or-test-command test
 ```
 
-## Development Checks
+## Defaults
 
-Run the local integration check before opening a PR:
+`trybox run -- <command>` is the main workflow. It picks defaults in this order:
 
-```sh
-scripts/check-integration.sh
-```
+- Target: `--target`, then `TRYBOX_TARGET`, then saved config, then `macos15-arm64`.
+- Repo: `--repo`, then `TRYBOX_REPO`, then the current git checkout.
+- VM resources: `--cpu`, `--memory-mb`, `--disk-gb`, then `TRYBOX_CPU`,
+  `TRYBOX_MEMORY_MB`, `TRYBOX_DISK_GB`, then target defaults.
 
-The default check runs `go test ./...`, builds `trybox`, and exercises the
-PR-safe CLI workflow against an isolated temporary `HOME` and disposable git
-fixture. It does not require Tart or a local target image.
-The script prints each host and Trybox command before running it so saved logs
-show exactly which step was active.
-
-To include the VM-backed workflow on a host with Tart and a local target image:
-
-```sh
-TRYBOX_INTEGRATION_VM=1 scripts/check-integration.sh
-```
-
-For the full local integration pass against a real Gecko checkout, run:
-
-```sh
-TRYBOX_INTEGRATION_FIREFOX=1 FIREFOX_REPO=~/firefox scripts/check-integration.sh
-```
-
-That mode syncs the Firefox checkout into a Trybox VM, runs a lightweight mach
-Python smoke command, checks logs/events/history, and exercises snapshot
-save/list/restore/delete. Override the guest command with
-`TRYBOX_FIREFOX_MACH_COMMAND` when you want a heavier mach check.
+Passing `--target` to a VM-backed command records it as the next default target.
 
 ## Common Flows
 
-Read the full [CLI guide](docs/cli.md) for definitions of targets,
-workspaces, workspace VMs, runs, and every public flag.
-
-Set or inspect the default workspace:
-
-```sh
-trybox workspace show
-trybox workspace use --target macos15-arm64
-```
-
-Sync a dirty checkout:
-
-```sh
-trybox sync
-```
-
-Run a command and inspect logs:
+Run a command and inspect the latest log:
 
 ```sh
 trybox run -- ./build-or-test-command test
+trybox logs
 trybox history
 trybox events <run-id>
-trybox logs <run-id>
 ```
 
 Open the guest desktop:
 
 ```sh
 trybox view                  # Tart native display
-trybox view --vnc            # Tart VNC plus Apple's Screen Sharing client
-trybox view --vnc --no-open  # Tart VNC endpoint only
+trybox view --vnc            # Tart VNC endpoint
+trybox view --vnc --json     # Tart VNC endpoint as JSON
+```
+
+Inspect or remove the VM for the current repo and target:
+
+```sh
+trybox status
+trybox destroy
 ```
 
 ## CLI Contract
@@ -113,15 +81,16 @@ trybox view --vnc --no-open  # Tart VNC endpoint only
 - Human-readable output by default.
 - `--json` for agent/script output on commands that return structured state.
 - Diagnostics and command stderr go to stderr.
-- Repo-bound commands default to the source checkout you run Trybox from.
-- `view --json` implies `--no-open`.
-- `--no-open` means Trybox does not open a host GUI client.
+- `trybox run` sync progress goes to stderr; command stdout streams to stdout.
+- `trybox logs` prints the latest run log unless a run id is provided.
+- `trybox view --vnc` starts Tart's VNC server and prints the localhost endpoint
+  for your VNC client.
 
 ## Target Images
 
-`trybox up` expects a local target image that is already SSH-ready. A target
-image is a reusable local base for a target such as `macos15-arm64`; a workspace
-VM is the disposable repo-bound clone created from it.
+`trybox run`, `trybox status`, `trybox view`, and `trybox destroy` operate on the
+VM for the selected repo and target. The first run expects a local target image
+that is already SSH-ready.
 
 Planned first-time setup:
 
@@ -129,9 +98,7 @@ Planned first-time setup:
 trybox bootstrap --target macos15-arm64
 ```
 
-`trybox target list` shows whether each local target image is present and, when
-missing, the exact clone command bootstrap would run. You can still create the
-local target image manually with Tart:
+Until `bootstrap` exists, create the local target image manually with Tart:
 
 ```sh
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
@@ -140,68 +107,27 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-ima
 ## Commands
 
 ```sh
-trybox bootstrap [--target name] [--json]
-trybox destroy [<workspace-id>] [--json]
+trybox destroy [--target name] [--repo path] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]
-trybox fetch --url URL --to guest-path [--target name] [--json]
 trybox history [--limit n] [--json]
-trybox info [--json]
-trybox logs <run-id> [--follow|-f] [--from-end]
-trybox reset [--target name] [--json]
-trybox run [--target name] [--json] -- <command>
-trybox shell [--target name] [-- <command>]
-trybox snapshot save <name> [--target name] [--json]
-trybox snapshot list [--target name] [--json]
-trybox snapshot restore <name> [--display] [--target name] [--json]
-trybox snapshot delete <name> [--target name] [--json]
-trybox status [--target name] [--json]
-trybox stop [--target name] [--json]
-trybox sync [--target name] [--json]
-trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
+trybox logs [run-id]
+trybox run [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] -- <command>
+trybox status [--target name] [--repo path] [--json]
 trybox target list [--json]
-trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
-trybox up [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
-trybox view [--target name] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
-trybox workspace list [--json]
-trybox workspace show [--json]
-trybox workspace unset [--json]
-trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+trybox view [--target name] [--repo path] [--vnc] [--json]
 ```
 
-`trybox destroy` deletes only the selected workspace VM. Without a workspace
-id, it selects the configured default workspace. It does not delete the host
-checkout, run logs, or workspace metadata. Stale runtime state on the workspace
-record (last known IP, sync fingerprint, last sync timestamp, last run log) is
-cleared so the next `trybox up` starts fresh.
-
-`trybox task` fetches a Taskcluster task definition from `--root-url` (or
-`TASKCLUSTER_ROOT_URL`) and turns it into a local replay plan. The default mode
-prints the resolved command, environment count, dependencies, artifacts, and
-target mapping. Add `run` to sync the selected workspace and execute the task
-command, or `shell` to open an SSH shell with the task environment exported.
-
-`trybox try <revision-or-url>` checks whether the selected host checkout is at
-the requested revision. With `task <task-id>`, it combines the source check with
-the Taskcluster replay plan and refuses `run`/`shell` when the checkout revision
-does not match.
-
-`--profile test` selects a smaller VM shape for short test or harness work.
-`--profile build` selects a larger source-build shape. Explicit `--cpu`,
-`--memory-mb`, and `--disk-gb` values override the selected profile.
-
-`trybox fetch --url URL --to path` downloads an artifact from inside the guest.
-Relative destinations are resolved under the guest work path.
-
-`trybox reset` deletes and recreates the selected workspace VM, then syncs the
-checkout back into the clean guest.
+`trybox destroy` deletes only the selected VM. It does not delete the host
+checkout, run logs, or metadata. Runtime state on the VM record is cleared so
+the next `trybox run` starts fresh.
 
 ## Guest Paths and Shell Expansion
 
 The synced checkout lives at `/Users/admin/trybox` inside the guest. The host
 shell expands `~` before `trybox run` sees the argv, so `~/trybox` resolves to
-the host home, not the guest's. Use the absolute guest path, or wrap the
-command in single quotes to defer expansion:
+the host home, not the guest's. Use the absolute guest path, or wrap the command
+in single quotes to defer expansion:
 
 ```sh
 trybox run -- bash -c 'cd /Users/admin/trybox && ./mach --help'
@@ -210,7 +136,6 @@ trybox run -- bash -lc 'cd "$HOME/trybox" && ./mach --help'
 
 ## More Detail
 
-- [CLI guide](docs/cli.md)
 - [Architecture](docs/architecture.md)
 - [Image model](docs/images.md)
 - [Security model](docs/security.md)

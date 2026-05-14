@@ -10,16 +10,16 @@ repeatable source debugging.
   Early development can use a public Tart image. Long term, this should come
   from a Trybox-owned registry and be pinned by digest.
 - **Target image**: the local golden VM image for a Trybox target, such as
-  `macos15-arm64`. `trybox up` clones this image into a workspace VM.
-- **Workspace VM**: a disposable, repo-bound clone used by `trybox up`,
-  `trybox sync`, and `trybox run`.
+  `macos15-arm64`. `trybox run` clones this image into a repo VM when needed.
+- **Repo VM**: a disposable, repo-bound clone used by `trybox run`,
+  `trybox view`, `trybox status`, and `trybox destroy`.
 
 ```mermaid
 flowchart LR
     source["source image<br/>public seed or Trybox-owned registry"] --> bootstrap["trybox bootstrap"]
     bootstrap --> target["local target image<br/>SSH-ready, Trybox-normalized"]
-    target --> workspace["workspace VM<br/>repo-bound disposable clone"]
-    workspace --> run["trybox run"]
+    target --> vm["repo VM<br/>repo-bound disposable clone"]
+    vm --> run["trybox run"]
 ```
 
 ## Why Own Source Images
@@ -53,9 +53,9 @@ The command should:
 6. Create the guest work directory.
 7. Enable desktop auto-login for the Trybox guest user so `trybox view` opens
    directly into a usable desktop.
-8. Record image metadata for `doctor`, `up`, and agents.
+8. Record image metadata for `doctor`, `run`, and agents.
 
-It should keep Tart details out of the normal `up/sync/run` workflow.
+It should keep Tart details out of the normal `run` workflow.
 
 ## Phases
 

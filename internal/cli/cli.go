@@ -22,40 +22,16 @@ func Run(ctx context.Context, args []string) error {
 		return nil
 	case "doctor":
 		return doctor(ctx, args[1:])
-	case "bootstrap":
-		return bootstrap(ctx, args[1:])
-	case "info":
-		return info(ctx, args[1:])
-	case "fetch":
-		return fetch(ctx, args[1:])
 	case "target":
 		return target(ctx, args[1:])
-	case "task":
-		return taskCommand(ctx, args[1:])
-	case "try":
-		return tryCommand(ctx, args[1:])
-	case "workspace":
-		return workspaceCommand(ctx, args[1:])
-	case "snapshot":
-		return snapshotCommand(ctx, args[1:])
-	case "up":
-		return up(ctx, args[1:])
-	case "sync":
-		return syncWorkspace(ctx, args[1:])
 	case "status":
 		return status(ctx, args[1:])
 	case "view":
 		return view(ctx, args[1:])
-	case "stop":
-		return stop(ctx, args[1:])
 	case "destroy":
 		return destroy(ctx, args[1:])
 	case "run":
 		return runCommand(ctx, args[1:])
-	case "reset":
-		return reset(ctx, args[1:])
-	case "shell", "attach":
-		return shell(ctx, args[1:])
 	case "logs":
 		return logs(ctx, args[1:])
 	case "events":

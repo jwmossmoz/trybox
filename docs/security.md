@@ -14,12 +14,12 @@ host into the execution environment.
 
 ## SSH Trust Boundary
 
-The macOS MVP connects to local, disposable workspace VMs and currently disables
+The macOS MVP connects to local, disposable repo VMs and currently disables
 SSH host-key verification for guest command execution and rsync. That keeps the
 first Tart flow simple, but it is a deliberate local-VM tradeoff rather than a
 general remote-execution model. Before Trybox-managed target images carry
 non-public credentials or run outside a local VM boundary, Trybox should pin the
-guest host key on first contact under `~/.trybox/keys/<workspace>/known_hosts`
+guest host key on first contact under `~/.trybox/keys/<vm-id>/known_hosts`
 and use that file for both SSH and rsync.
 
 ## Isolation Classes

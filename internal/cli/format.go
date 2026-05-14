@@ -57,17 +57,18 @@ func viewWorkspace(workspace state.Workspace) workspaceView {
 
 func viewRun(run state.Run) runView {
 	return runView{
-		ID:          run.ID,
-		WorkspaceID: run.WorkspaceID,
-		Target:      run.Target,
-		RepoRoot:    run.RepoRoot,
-		Command:     run.Command,
-		StartedAt:   run.StartedAt,
-		EndedAt:     run.EndedAt,
-		ExitCode:    run.ExitCode,
-		StdoutLog:   run.StdoutLog,
-		StderrLog:   run.StderrLog,
-		EventsLog:   run.EventsLog,
+		ID:        run.ID,
+		Target:    run.Target,
+		RepoRoot:  run.RepoRoot,
+		VMName:    run.VMName,
+		Command:   run.Command,
+		StartedAt: run.StartedAt,
+		EndedAt:   run.EndedAt,
+		ExitCode:  run.ExitCode,
+		OutputLog: run.OutputLog,
+		StdoutLog: run.StdoutLog,
+		StderrLog: run.StderrLog,
+		EventsLog: run.EventsLog,
 	}
 }
 

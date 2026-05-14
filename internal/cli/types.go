@@ -12,7 +12,7 @@ type options struct {
 	CPU       int
 	MemoryMB  int
 	DiskGB    int
-	Profile   string
+	Resources bool
 }
 
 type syncResult struct {
@@ -24,13 +24,6 @@ type syncResult struct {
 	Warnings    []string `json:"warnings,omitempty"`
 	Skipped     bool     `json:"skipped"`
 	Duration    string   `json:"duration"`
-}
-
-type fetchResult struct {
-	WorkspaceID string `json:"workspace_id"`
-	Target      string `json:"target"`
-	URL         string `json:"url"`
-	Destination string `json:"destination"`
 }
 
 type targetView struct {
@@ -63,15 +56,16 @@ type workspaceView struct {
 }
 
 type runView struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Target      string    `json:"target"`
-	RepoRoot    string    `json:"repo_root"`
-	Command     []string  `json:"command"`
-	StartedAt   time.Time `json:"started_at"`
-	EndedAt     time.Time `json:"ended_at,omitempty"`
-	ExitCode    int       `json:"exit_code"`
-	StdoutLog   string    `json:"stdout_log"`
-	StderrLog   string    `json:"stderr_log"`
-	EventsLog   string    `json:"events_log"`
+	ID        string    `json:"id"`
+	Target    string    `json:"target"`
+	RepoRoot  string    `json:"repo_root"`
+	VMName    string    `json:"vm_name"`
+	Command   []string  `json:"command"`
+	StartedAt time.Time `json:"started_at"`
+	EndedAt   time.Time `json:"ended_at,omitempty"`
+	ExitCode  int       `json:"exit_code"`
+	OutputLog string    `json:"output_log"`
+	StdoutLog string    `json:"stdout_log"`
+	StderrLog string    `json:"stderr_log"`
+	EventsLog string    `json:"events_log"`
 }

@@ -1,42 +1,33 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	neturl "net/url"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/state"
 	"github.com/jwmossmoz/trybox/internal/targets"
 )
 
+var tartVNCURLPattern = regexp.MustCompile(`vnc://[^\s]+`)
+
 func view(ctx context.Context, args []string) error {
 	fs, opts := commandFlags("view", flagSpec{Target: true, Repo: true, JSON: true, VNC: true})
-	noOpen := fs.Bool("no-open", false, "print the VNC URL without opening Screen Sharing")
-	fs.Bool("reuse-client", false, "accepted for compatibility; Trybox does not reset existing clients")
-	restartDisplay := fs.Bool("restart-display", false, "restart a running VM to switch display mode")
 	if handled, err := parseFlags(fs, args); handled || err != nil {
 		return err
-	}
-	if opts.JSON {
-		*noOpen = true
-	}
-	if *noOpen {
-		opts.VNC = true
 	}
 	target, workspace, b, store, err := setup(opts)
 	if err != nil {
 		return err
 	}
 	return withWorkspaceLock(ctx, store, workspace.ID, func() error {
-		wasRunning := b.IsRunning(ctx, workspace.VMName)
-		if wasRunning && !*restartDisplay {
-			return fmt.Errorf("workspace VM %q is already running; rerun with --restart-display to restart it for %s", workspace.VMName, viewDisplayName(opts.VNC))
-		}
 		if err := b.Create(ctx, target, workspace); err != nil {
 			return err
 		}
@@ -48,13 +39,18 @@ func view(ctx context.Context, args []string) error {
 		if _, err := b.IP(ctx, workspace, 120); err != nil {
 			return err
 		}
-		if err := completeAutoLoginBootCycle(ctx, target, workspace, b); err != nil {
+		if err := ensureAutoLogin(ctx, target, workspace, b); err != nil {
 			return err
 		}
 		if b.IsRunning(ctx, workspace.VMName) {
 			if err := b.Stop(ctx, workspace); err != nil {
 				return err
 			}
+		}
+		logPath := filepath.Join(store.LogsDir, workspace.VMName+".log")
+		logOffset := int64(0)
+		if opts.VNC {
+			logOffset = fileSize(logPath)
 		}
 		if err := b.Start(ctx, target, workspace, backend.StartOptions{VNC: opts.VNC}); err != nil {
 			return err
@@ -67,35 +63,29 @@ func view(ctx context.Context, args []string) error {
 		if err := store.SaveWorkspace(workspace); err != nil {
 			return err
 		}
-		displayURL := vncURL(ip, target.Username, "")
-		openURL := displayURL
-		if target.Password != "" {
-			openURL = vncURL(ip, target.Username, target.Password)
+		displayURL := ""
+		if opts.VNC {
+			displayURL, err = waitForTartVNCURL(ctx, logPath, logOffset, 15*time.Second)
+			if err != nil {
+				return err
+			}
+			closeScreenSharing(ctx)
 		}
 		out := map[string]any{
-			"workspace":    viewWorkspace(workspace),
+			"vm":           viewWorkspace(workspace),
 			"display":      viewDisplayName(opts.VNC),
-			"client":       viewClientName(opts.VNC, *noOpen),
+			"client":       viewClientName(opts.VNC),
 			"url":          displayURL,
 			"fresh_client": false,
-			"opened":       !*noOpen,
-		}
-		if opts.VNC && !*noOpen {
-			if err := exec.CommandContext(ctx, "open", openURL).Start(); err != nil {
-				return fmt.Errorf("open Screen Sharing failed: %w", err)
-			}
+			"opened":       !opts.VNC,
 		}
 		if opts.JSON {
 			return writeJSON(os.Stdout, out)
 		}
-		fmt.Printf("workspace: %s\ndisplay:   %s\nclient:    %s\n", workspace.ID, viewDisplayName(opts.VNC), viewClientName(opts.VNC, *noOpen))
+		fmt.Printf("vm:        %s\ndisplay:   %s\nclient:    %s\n", workspace.VMName, viewDisplayName(opts.VNC), viewClientName(opts.VNC))
 		if opts.VNC {
-			fmt.Printf("url:       %s\nusername:  %s\n", displayURL, target.Username)
-			if *noOpen {
-				fmt.Println("open:      skipped")
-			} else {
-				fmt.Println("open:      Screen Sharing launched")
-			}
+			fmt.Printf("url:       %s\n", displayURL)
+			fmt.Println("open:      skipped")
 		} else {
 			fmt.Println("open:      Tart native window launched")
 		}
@@ -110,65 +100,80 @@ func viewDisplayName(vnc bool) string {
 	return "tart-native"
 }
 
-func viewClientName(vnc bool, noOpen bool) string {
+func viewClientName(vnc bool) string {
 	if !vnc {
 		return "tart"
 	}
-	if noOpen {
-		return "none"
-	}
-	return "screen-sharing"
+	return "none"
 }
 
-func vncURL(host, username, password string) string {
-	value := neturl.URL{Scheme: "vnc", Host: host}
-	if username != "" && password != "" {
-		value.User = neturl.UserPassword(username, password)
-	} else if username != "" {
-		value.User = neturl.User(username)
-	}
-	return value.String()
-}
+func waitForTartVNCURL(ctx context.Context, logPath string, offset int64, timeout time.Duration) (string, error) {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
-func completeAutoLoginBootCycle(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) error {
-	changed, err := ensureAutoLogin(ctx, target, workspace, b)
-	if err != nil || !changed {
-		return err
-	}
-	if b.IsRunning(ctx, workspace.VMName) {
-		if err := b.Stop(ctx, workspace); err != nil {
-			return err
+	for {
+		data, err := os.ReadFile(logPath)
+		if err == nil {
+			start := offset
+			if start < 0 || start > int64(len(data)) {
+				start = 0
+			}
+			if url := latestTartVNCURL(string(data[start:])); url != "" {
+				return url, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-deadline.C:
+			return "", fmt.Errorf("timed out waiting for Tart VNC endpoint in %s", logPath)
+		case <-ticker.C:
 		}
 	}
-	if err := b.Start(ctx, target, workspace, backend.StartOptions{Headless: true}); err != nil {
-		return err
-	}
-	_, err = b.IP(ctx, workspace, 120)
-	return err
 }
 
-func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) (bool, error) {
+func latestTartVNCURL(logText string) string {
+	matches := tartVNCURLPattern.FindAllString(logText, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return strings.TrimRight(matches[len(matches)-1], ".")
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func closeScreenSharing(ctx context.Context) {
+	_ = exec.CommandContext(ctx, "osascript", "-e", `tell application "Screen Sharing" to quit`).Run()
+}
+
+func ensureAutoLogin(ctx context.Context, target targets.Target, workspace state.Workspace, b backend.Backend) error {
 	if target.Username == "" || target.Password == "" {
-		return false, nil
+		return nil
 	}
 	expected := "Automatic login user: " + target.Username
 	script := strings.Join([]string{
 		"set -eu",
-		"if sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null; then printf 'already\\n'; exit 0; fi",
+		"if sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null; then exit 0; fi",
 		"printf '%s\\n' " + shellQuote(target.Password) + " | sudo -S sysadminctl -autologin set -userName " + shellQuote(target.Username) + " -password " + shellQuote(target.Password) + " -adminUser " + shellQuote(target.Username) + " -adminPassword " + shellQuote(target.Password) + " >/tmp/trybox-autologin.log 2>&1 || true",
 		"sysadminctl -autologin status 2>&1 | grep -F " + shellQuote(expected) + " >/dev/null",
-		"printf 'configured\\n'",
 	}, "\n")
-	var stdout bytes.Buffer
 	exitCode, err := b.Exec(ctx, target, workspace, []string{"sh", "-lc", script}, backend.ExecOptions{
-		Stdout: &stdout,
+		Stdout: io.Discard,
 		Stderr: os.Stderr,
 	})
 	if err != nil {
-		return false, err
+		return err
 	}
 	if exitCode != 0 {
-		return false, fmt.Errorf("macOS auto-login setup failed for %s; see /tmp/trybox-autologin.log in the guest", target.Username)
+		return fmt.Errorf("macOS auto-login setup failed for %s; see /tmp/trybox-autologin.log in the guest", target.Username)
 	}
-	return strings.Contains(stdout.String(), "configured"), nil
+	return nil
 }

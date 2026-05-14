@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +20,17 @@ func setup(opts *options) (targets.Target, state.Workspace, backend.Backend, sta
 	if err != nil {
 		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
+	if err := applyEnvOptions(opts); err != nil {
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
+	}
 	target, err := targets.Get(targetNameFor(opts, config))
 	if err != nil {
 		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	repo, err := resolveRepo(opts.Repo, config)
+	if err := saveDefaultTargetIfSet(store, config, opts, target); err != nil {
+		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
+	}
+	repo, err := resolveRepo(opts.Repo)
 	if err != nil {
 		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
@@ -30,9 +38,7 @@ func setup(opts *options) (targets.Target, state.Workspace, backend.Backend, sta
 	if err != nil {
 		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
 	}
-	if err := applyResourceOverrides(&workspace, target, opts); err != nil {
-		return targets.Target{}, state.Workspace{}, nil, state.Store{}, err
-	}
+	applyResourceOverrides(&workspace, target, opts)
 	b := backendFor(target)
 	return target, workspace, b, store, nil
 }
@@ -46,27 +52,9 @@ func withWorkspaceLock(ctx context.Context, store state.Store, workspaceID strin
 	return fn()
 }
 
-func workspaceForDestroy(workspaceID string, store state.Store, config state.Config) (state.Workspace, string, error) {
-	if workspaceID != "" {
-		workspace, err := store.LoadWorkspace(workspaceID)
-		if err != nil {
-			return state.Workspace{}, "", fmt.Errorf("load workspace %q: %w (see trybox workspace list)", workspaceID, err)
-		}
-		return workspace, "selected workspace", nil
-	}
-	if config.DefaultWorkspaceID == "" {
-		return state.Workspace{}, "", fmt.Errorf("no default workspace is configured; pass a workspace id (see trybox workspace list) or run trybox workspace use")
-	}
-	workspace, err := store.LoadWorkspace(config.DefaultWorkspaceID)
-	if err != nil {
-		return state.Workspace{}, "", fmt.Errorf("load default workspace %q: %w (run trybox workspace list to see known workspaces, or trybox workspace unset to clear the default)", config.DefaultWorkspaceID, err)
-	}
-	return workspace, "default workspace", nil
-}
-
 func ensureVM(ctx context.Context, target targets.Target, workspace *state.Workspace, b backend.Backend, store state.Store, opts *options) error {
 	if resourceOverridesRequested(opts) && b.Exists(ctx, workspace.VMName) {
-		return fmt.Errorf("resource changes require destroying existing workspace VM %q first; run: trybox destroy %s", workspace.VMName, workspace.ID)
+		return fmt.Errorf("resource changes require destroying existing VM %q first; run: trybox destroy --repo %s --target %s", workspace.VMName, workspace.RepoRoot, workspace.Target)
 	}
 	if err := b.Create(ctx, target, *workspace); err != nil {
 		return err
@@ -113,10 +101,21 @@ func targetNameFor(opts *options, config state.Config) string {
 	if opts != nil && opts.TargetSet {
 		return opts.Target
 	}
+	if env := strings.TrimSpace(os.Getenv("TRYBOX_TARGET")); env != "" {
+		return env
+	}
 	if config.DefaultTarget != "" {
 		return config.DefaultTarget
 	}
 	return "macos15-arm64"
+}
+
+func saveDefaultTargetIfSet(store state.Store, config state.Config, opts *options, target targets.Target) error {
+	if opts == nil || !opts.TargetSet || config.DefaultTarget == target.Name {
+		return nil
+	}
+	config.DefaultTarget = target.Name
+	return store.SaveConfig(config)
 }
 
 func loadOrCreateWorkspace(store state.Store, target targets.Target, repo string) (state.Workspace, error) {
@@ -140,38 +139,7 @@ func loadOrCreateWorkspace(store state.Store, target targets.Target, repo string
 	}, nil
 }
 
-type resourceProfile struct {
-	CPU      int
-	MemoryMB int
-	DiskGB   int
-}
-
-var resourceProfiles = map[string]resourceProfile{
-	"test": {
-		CPU:      4,
-		MemoryMB: 8192,
-		DiskGB:   80,
-	},
-	"build": {
-		CPU:      10,
-		MemoryMB: 24576,
-		DiskGB:   150,
-	},
-}
-
-func applyResourceOverrides(workspace *state.Workspace, target targets.Target, opts *options) error {
-	if opts == nil {
-		opts = &options{}
-	}
-	if opts.Profile != "" {
-		profile, ok := resourceProfiles[opts.Profile]
-		if !ok {
-			return fmt.Errorf("unknown profile %q; available profiles: test, build", opts.Profile)
-		}
-		workspace.CPU = profile.CPU
-		workspace.MemoryMB = profile.MemoryMB
-		workspace.DiskGB = profile.DiskGB
-	}
+func applyResourceOverrides(workspace *state.Workspace, target targets.Target, opts *options) {
 	if opts.CPU > 0 {
 		workspace.CPU = opts.CPU
 	}
@@ -190,28 +158,58 @@ func applyResourceOverrides(workspace *state.Workspace, target targets.Target, o
 	if workspace.DiskGB == 0 {
 		workspace.DiskGB = target.DiskGB
 	}
-	return nil
 }
 
 func resourceOverridesRequested(opts *options) bool {
-	return opts != nil && (opts.Profile != "" || opts.CPU > 0 || opts.MemoryMB > 0 || opts.DiskGB > 0)
+	return opts != nil && opts.Resources && (opts.CPU > 0 || opts.MemoryMB > 0 || opts.DiskGB > 0)
 }
 
-func resolveRepo(repo string, config state.Config) (string, error) {
+func resolveRepo(repo string) (string, error) {
 	if repo != "" {
 		return canonicalPath(repo)
 	}
-	if config.DefaultRepoRoot != "" {
-		return canonicalPath(config.DefaultRepoRoot)
+	if env := strings.TrimSpace(os.Getenv("TRYBOX_REPO")); env != "" {
+		return canonicalPath(env)
 	}
 	return resolveGitRepo()
 }
 
-func resolveRepoForUse(repo string) (string, error) {
-	if repo != "" {
-		return canonicalPath(repo)
+func applyEnvOptions(opts *options) error {
+	if opts == nil || !opts.Resources {
+		return nil
 	}
-	return resolveGitRepo()
+	var err error
+	if opts.CPU == 0 {
+		opts.CPU, err = envInt("TRYBOX_CPU")
+		if err != nil {
+			return err
+		}
+	}
+	if opts.MemoryMB == 0 {
+		opts.MemoryMB, err = envInt("TRYBOX_MEMORY_MB")
+		if err != nil {
+			return err
+		}
+	}
+	if opts.DiskGB == 0 {
+		opts.DiskGB, err = envInt("TRYBOX_DISK_GB")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func envInt(name string) (int, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer", name)
+	}
+	return parsed, nil
 }
 
 func resolveGitRepo() (string, error) {
@@ -219,7 +217,7 @@ func resolveGitRepo() (string, error) {
 	if err == nil {
 		return canonicalPath(strings.TrimSpace(string(out)))
 	}
-	return "", fmt.Errorf("could not detect repo root; run trybox from inside a Git checkout or pass --repo path")
+	return "", fmt.Errorf("could not detect repo root; pass --repo or run from a git checkout")
 }
 
 func canonicalPath(path string) (string, error) {

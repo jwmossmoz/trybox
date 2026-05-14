@@ -9,7 +9,6 @@ import (
 )
 
 type StartOptions struct {
-	RepoRoot string
 	Headless bool
 	VNC      bool
 }

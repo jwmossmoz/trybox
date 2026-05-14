@@ -11,52 +11,18 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/state"
 	"github.com/jwmossmoz/trybox/internal/targets"
-	workspacepkg "github.com/jwmossmoz/trybox/internal/workspace"
+	"github.com/jwmossmoz/trybox/internal/workspace"
 )
 
-func syncWorkspace(ctx context.Context, args []string) error {
-	fs, opts := commandFlags("sync", flagSpec{Target: true, Repo: true, JSON: true})
-	if handled, err := parseFlags(fs, args); handled || err != nil {
-		return err
-	}
-	target, workspace, b, store, err := setup(opts)
-	if err != nil {
-		return err
-	}
-	if err := workspacepkg.ValidateRepoRoot(workspace.RepoRoot); err != nil {
-		return err
-	}
-	var result syncResult
-	if err := withWorkspaceLock(ctx, store, workspace.ID, func() error {
-		if err := ensureVM(ctx, target, &workspace, b, store, opts); err != nil {
-			return err
-		}
-		var err error
-		result, err = syncWorkspaceState(ctx, target, &workspace, b, store, nil)
-		return err
-	}); err != nil {
-		return err
-	}
-	if opts.JSON {
-		return writeJSON(os.Stdout, result)
-	}
-	printWarnings(result.Warnings)
-	action := "synced"
-	if result.Skipped {
-		action = "sync skipped"
-	}
-	fmt.Printf("%s: %d files, %s -> %s (%s)\n", action, result.FileCount, humanBytes(result.TotalBytes), result.RemotePath, result.Duration)
-	return nil
-}
-
-func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run) (syncResult, error) {
+func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceState *state.Workspace, b backend.Backend, store state.Store, run *state.Run, progress io.Writer) (syncResult, error) {
 	start := time.Now()
-	plan, err := workspacepkg.BuildPlan(ctx, workspaceState.RepoRoot, 10)
+	plan, err := workspace.BuildPlan(ctx, workspaceState.RepoRoot, 10)
 	if err != nil {
 		return syncResult{}, err
 	}
@@ -129,8 +95,11 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 	}
 	sshCmd := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR", shellQuote(keyPath))
 	remote := fmt.Sprintf("%s@%s:%s/", target.Username, ip, remoteWorkPath(target))
-	cmd := exec.CommandContext(ctx, "rsync",
+	rsyncArgs := []string{
 		"-a",
+	}
+	rsyncArgs = append(rsyncArgs, rsyncTransferProgressArgs(ctx)...)
+	rsyncArgs = append(rsyncArgs,
 		"--from0",
 		"--files-from", manifestPath,
 		"--relative",
@@ -138,12 +107,19 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 		"./",
 		remote,
 	)
+	if progress != nil {
+		fmt.Fprintf(progress, "syncing: %d files, %s -> %s\n", plan.FileCount, humanBytes(plan.TotalBytes), result.RemotePath)
+	}
+	cmd := exec.CommandContext(ctx, "rsync", rsyncArgs...)
 	cmd.Dir = workspaceState.RepoRoot
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
+	progressOut := &newlineTrackingWriter{w: progress}
+	cmd.Stdout = progressOut
+	cmd.Stderr = progressOut
 	if err := cmd.Run(); err != nil {
+		progressOut.Finish()
 		return result, fmt.Errorf("rsync failed: %w", err)
 	}
+	progressOut.Finish()
 	if err := writeRemoteManifest(ctx, target, ip, manifestPath, sshCmd); err != nil {
 		return result, err
 	}
@@ -221,6 +197,51 @@ func writeRemoteManifest(ctx context.Context, target targets.Target, ip string, 
 		return fmt.Errorf("rsync remote manifest failed: %w", err)
 	}
 	return nil
+}
+
+func rsyncTransferProgressArgs(ctx context.Context) []string {
+	out, err := exec.CommandContext(ctx, "rsync", "--help").CombinedOutput()
+	if err != nil {
+		return []string{"--progress"}
+	}
+	return rsyncProgressArgsFromHelp(string(out))
+}
+
+func rsyncProgressArgsFromHelp(help string) []string {
+	if strings.Contains(help, "--info=") {
+		return []string{"--info=progress2"}
+	}
+	return []string{"--progress"}
+}
+
+type newlineTrackingWriter struct {
+	mu    sync.Mutex
+	w     io.Writer
+	wrote bool
+	last  byte
+}
+
+func (w *newlineTrackingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(p) > 0 {
+		w.wrote = true
+		w.last = p[len(p)-1]
+	}
+	if w.w == nil {
+		return len(p), nil
+	}
+	return w.w.Write(p)
+}
+
+func (w *newlineTrackingWriter) Finish() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.wrote || w.last == '\n' || w.w == nil {
+		return
+	}
+	fmt.Fprintln(w.w)
+	w.last = '\n'
 }
 
 func staleManifestFiles(previous []byte, current []byte) []string {

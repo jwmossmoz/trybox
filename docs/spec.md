@@ -1,6 +1,6 @@
 # Trybox Spec
 
-Trybox creates clean local VM workspaces for source debugging.
+Trybox runs dirty source checkouts in clean local VMs for source debugging.
 
 ## MVP
 
@@ -9,11 +9,12 @@ Trybox creates clean local VM workspaces for source debugging.
 - Built-in macOS targets for the public macOS families Tart currently
   publishes.
 - Trybox-owned macOS target image.
-- Repo-bound VM workspaces.
+- Repo-bound local VMs.
 - Durable run logs.
 - JSON output for agent workflows.
 - Manifest-based sync for tracked files, repository metadata, and nonignored
   local files.
+- Automatic sync before each run.
 - Local target names instead of backend internals.
 
 ## Phase 1.5
@@ -37,11 +38,7 @@ Trybox creates clean local VM workspaces for source debugging.
 
 ```sh
 trybox doctor --json
-cd ~/src/project
-trybox workspace use --target macos15-arm64 --json
-trybox up --json
-trybox sync --json
-trybox run -- ./build-or-test-command
-trybox logs run_20260513T153000
+trybox run --target macos15-arm64 --repo ~/src/project -- ./build-or-test-command
+trybox logs
 trybox status --json
 ```

@@ -27,9 +27,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	store := testStore(t)
 
 	config := Config{
-		DefaultTarget:      "macos15-arm64",
-		DefaultRepoRoot:    "/tmp/repo",
-		DefaultWorkspaceID: "workspace_macos15-arm64_repo_abc",
+		DefaultTarget: "macos15-arm64",
 	}
 	if err := store.SaveConfig(config); err != nil {
 		t.Fatal(err)
@@ -38,7 +36,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loadedConfig.SchemaVersion != 1 || loadedConfig.DefaultWorkspaceID != config.DefaultWorkspaceID || loadedConfig.UpdatedAt.IsZero() {
+	if loadedConfig.SchemaVersion != 1 || loadedConfig.DefaultTarget != config.DefaultTarget || loadedConfig.UpdatedAt.IsZero() {
 		t.Fatalf("LoadConfig() = %+v", loadedConfig)
 	}
 

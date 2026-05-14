@@ -27,20 +27,13 @@ func printCommandHelp(parts []string) error {
 
 func commandUsage(name string) string {
 	usages := map[string]string{
-		"bootstrap": `trybox bootstrap: create the local target image for a target
+		"destroy": `trybox destroy: delete the VM for the selected repo and target
 
 Usage:
-  trybox bootstrap [--target name] [--json]
-`,
-		"destroy": `trybox destroy: delete only the selected workspace VM
-
-Usage:
-  trybox destroy [<workspace-id>] [--json]
+  trybox destroy [--target name] [--repo path] [--json]
 
 Notes:
-  Without an id, destroys the configured default workspace VM.
-  Use trybox workspace list to see available workspace ids.
-  Does not delete the host checkout, run logs, or workspace metadata.
+  Does not delete the host checkout, run logs, or Trybox metadata.
 `,
 		"doctor": `trybox doctor: check host tools and the selected target image
 
@@ -52,205 +45,76 @@ Usage:
 Usage:
   trybox events <run-id> [--json]
 `,
-		"fetch": `trybox fetch: download a URL into the guest workspace
-
-Usage:
-  trybox fetch --url URL --to guest-path [--target name] [--json]
-
-Notes:
-  Relative destinations are resolved under the guest work path.
-`,
 		"history": `trybox history: list recent runs
 
 Usage:
   trybox history [--limit n] [--json]
 `,
-		"info": `trybox info: print Trybox state paths and defaults
+		"logs": `trybox logs: print command output for a run
 
 Usage:
-  trybox info [--json]
-`,
-		"logs": `trybox logs: print stdout and stderr logs for a run
-
-Usage:
-  trybox logs <run-id> [--follow|-f] [--from-end]
+  trybox logs [run-id]
 
 Notes:
-  --follow keeps printing new log bytes until the run finishes, then exits with
-  the run's recorded exit code. --from-end starts following at the end of
-  existing logs and requires --follow.
+  Without a run id, prints the latest run log.
 `,
-		"run": `trybox run: sync the workspace and run a command in the guest
+		"run": `trybox run: sync the current checkout and run a command in the VM
 
 Usage:
-  trybox run [--target name] [--json] -- <command>
+  trybox run [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] -- <command>
+
+Defaults:
+  target: --target, then TRYBOX_TARGET, then saved config, then macos15-arm64.
+  repo:   --repo, then TRYBOX_REPO, then the current git checkout.
 `,
-		"reset": `trybox reset: recreate the workspace VM and sync the checkout
+		"status": `trybox status: show VM state
 
 Usage:
-  trybox reset [--target name] [--json]
-`,
-		"shell": `trybox shell: open an interactive SSH session in the workspace VM
-
-Usage:
-  trybox shell [--target name] [-- <command>]
-
-Notes:
-  Without a command, opens a login shell in the guest work path.
-`,
-		"snapshot": `trybox snapshot: save, restore, list, and delete workspace VM snapshots
-
-Usage:
-  trybox snapshot save <name> [--target name] [--json]
-  trybox snapshot list [--target name] [--json]
-  trybox snapshot restore <name> [--display] [--target name] [--json]
-  trybox snapshot delete <name> [--target name] [--json]
-
-Notes:
-  Snapshot names must be kebab-case. Snapshots are scoped to the selected
-  workspace and keep metadata under Trybox state.
-`,
-		"snapshot save": `trybox snapshot save: capture the selected workspace VM state
-
-Usage:
-  trybox snapshot save <name> [--target name] [--json]
-`,
-		"snapshot list": `trybox snapshot list: list snapshots for the selected workspace
-
-Usage:
-  trybox snapshot list [--target name] [--json]
-`,
-		"snapshot restore": `trybox snapshot restore: replace the workspace VM from a snapshot
-
-Usage:
-  trybox snapshot restore <name> [--display] [--target name] [--json]
-`,
-		"snapshot delete": `trybox snapshot delete: delete a workspace snapshot
-
-Usage:
-  trybox snapshot delete <name> [--target name] [--json]
-`,
-		"status": `trybox status: show workspace VM state
-
-Usage:
-  trybox status [--target name] [--json]
-`,
-		"stop": `trybox stop: stop a workspace VM without deleting it
-
-Usage:
-  trybox stop [--target name] [--json]
-`,
-		"sync": `trybox sync: sync the source checkout into the guest workspace
-
-Usage:
-  trybox sync [--target name] [--json]
-`,
-		"task": `trybox task: inspect or replay a Taskcluster task
-
-Usage:
-  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
-
-Notes:
-  Without run or shell, prints the replay plan. --root-url can also come from TASKCLUSTER_ROOT_URL.
+  trybox status [--target name] [--repo path] [--json]
 `,
 		"target": `trybox target: inspect built-in target names
 
 Usage:
   trybox target list [--json]
 `,
-		"try": `trybox try: inspect a source revision and optionally replay a task
-
-Usage:
-  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
-
-Notes:
-  Replay run/shell requires the host checkout HEAD to match the requested revision.
-`,
 		"target list": `trybox target list: list built-in target names
 
 Usage:
   trybox target list [--json]
 `,
-		"up": `trybox up: create and start the workspace VM
+		"view": `trybox view: open the VM desktop
 
 Usage:
-  trybox up [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
-`,
-		"view": `trybox view: open the workspace desktop
-
-Usage:
-  trybox view [--target name] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
+  trybox view [--target name] [--repo path] [--vnc] [--json]
 
 Notes:
-  Default display is Tart native. --vnc starts Tart VNC. --no-open does not open a host GUI client.
-  --json implies --no-open. A running VM is not restarted unless --restart-display is passed.
-`,
-		"workspace": `trybox workspace: manage the default workspace
-
-Usage:
-  trybox workspace list [--json]
-  trybox workspace show [--json]
-  trybox workspace unset [--json]
-  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
-`,
-		"workspace list": `trybox workspace list: list all known workspaces
-
-Usage:
-  trybox workspace list [--json]
-`,
-		"workspace unset": `trybox workspace unset: unset the default workspace pointer
-
-Usage:
-  trybox workspace unset [--json]
-`,
-		"workspace show": `trybox workspace show: show the configured default workspace
-
-Usage:
-  trybox workspace show [--json]
-`,
-		"workspace use": `trybox workspace use: set the default source checkout and target
-
-Usage:
-  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+  Default display is Tart native. --vnc starts Tart's VNC server and prints the endpoint.
+  VNC mode is for connecting with your own VNC client.
+  Trybox restarts the VM when needed to switch display mode.
 `,
 	}
 	return usages[name]
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `trybox: clean local VM workspaces for source debugging
+	fmt.Fprint(w, `trybox: run a dirty checkout in a clean local VM
 
 Usage:
-  trybox bootstrap [--target name] [--json]
-  trybox destroy [<workspace-id>] [--json]
+  trybox destroy [--target name] [--repo path] [--json]
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]
-  trybox fetch --url URL --to guest-path [--target name] [--json]
   trybox history [--limit n] [--json]
-  trybox info [--json]
-  trybox logs <run-id> [--follow|-f] [--from-end]
-  trybox reset [--target name] [--json]
-  trybox run [--target name] [--json] -- <command>
-  trybox shell [--target name] [-- <command>]
-  trybox snapshot save <name> [--target name] [--json]
-  trybox snapshot list [--target name] [--json]
-  trybox snapshot restore <name> [--display] [--target name] [--json]
-  trybox snapshot delete <name> [--target name] [--json]
-  trybox status [--target name] [--json]
-  trybox stop [--target name] [--json]
-  trybox sync [--target name] [--json]
-  trybox task <task-id> [run|shell] [--root-url URL] [--target name] [--json]
+  trybox logs [run-id]
+  trybox run [--target name] [--repo path] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] -- <command>
+  trybox status [--target name] [--repo path] [--json]
   trybox target list [--json]
-  trybox try <revision-or-url> [task <task-id> [run|shell]] [--root-url URL] [--target name] [--json]
-  trybox up [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json]
-  trybox view [--target name] [--vnc] [--no-open] [--reuse-client] [--restart-display] [--json]
-  trybox workspace list [--json]
-  trybox workspace show [--json]
-  trybox workspace unset [--json]
-  trybox workspace use [--target name] [--profile test|build] [--cpu n] [--memory-mb n] [--disk-gb n] [--json] [repo]
+  trybox view [--target name] [--repo path] [--vnc] [--json]
 
 MVP backend:
   macOS targets via Tart.
+
+Environment:
+  TRYBOX_TARGET, TRYBOX_REPO, TRYBOX_CPU, TRYBOX_MEMORY_MB, TRYBOX_DISK_GB
 
 Run "trybox help <command>" or "trybox <command> --help" for command help.
 `)

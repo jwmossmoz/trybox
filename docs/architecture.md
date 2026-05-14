@@ -1,11 +1,11 @@
 # Trybox Architecture
 
-Trybox is a local execution control plane for clean source debugging
-workspaces. The first backend is Tart, but the public model is not "a Tart
-wrapper." The public nouns are:
+Trybox is a local execution control plane for clean source debugging. The first
+backend is Tart, but the public model is not "a Tart wrapper." The public nouns
+are:
 
 - **Target**: an OS/architecture shape, such as `macos15-arm64`.
-- **Workspace**: a repo-bound local VM for one target.
+- **VM**: the repo-bound local machine for one target.
 - **Run**: one command execution with durable logs and metadata.
 
 ## Layer Model
@@ -36,9 +36,6 @@ trybox CLI
     tart backend
     future windows backend
     future linux/container backend
-  command sandbox interface
-    none
-    future bwrap/nsjail
 ```
 
 ## Current Implementation Diagram
@@ -48,15 +45,14 @@ flowchart TD
     user["Human or agent"] --> cli["Trybox CLI"]
 
     cli --> targets["Target catalog<br/>macOS version + architecture"]
-    cli --> lifecycle["Workspace lifecycle<br/>up / status / stop / destroy"]
-    cli --> sync["Source sync<br/>sync"]
-    cli --> run["Command execution<br/>run"]
+    cli --> lifecycle["VM lifecycle<br/>status / view / destroy"]
+    cli --> run["Run coordinator<br/>start / sync / command"]
 
     targets --> backend["VM backend<br/>Tart today"]
     lifecycle --> backend
     backend --> vm["Clean local macOS VM"]
 
-    sync --> checkout["Host source checkout"]
+    run --> checkout["Host source checkout"]
     checkout --> workspace["Guest workspace<br/>~/trybox"]
     vm --> workspace
     run --> workspace
@@ -76,6 +72,7 @@ State lives under `~/.trybox`:
   runs/
     run_*/
       meta.json
+      output.log
       stdout.log
       stderr.log
       events.ndjson
@@ -114,20 +111,19 @@ workflow.
 
 Trybox targets are local OS and architecture shapes. They can be chosen to
 match the behavior a developer needs to reproduce, but the normal workflow
-should stay target/workspace/run based instead of exposing backend image
-details.
+should stay target/run based instead of exposing backend image details.
 
 The first implementation expects a Trybox macOS target image with SSH enabled.
 Creating that target image is part of the Trybox setup story, not something
-the agent-facing `up/sync/run` flow should expose.
+the agent-facing `run` flow should expose.
 
-See [images.md](images.md) for the source image, target image, and workspace VM
+See [images.md](images.md) for the source image, target image, and repo VM
 model.
 
 ## Large Repository Strategy
 
-The MVP syncs the Git-managed working set and repository metadata into the
-guest:
+Each `trybox run` syncs the Git-managed working set and repository metadata
+into the guest before executing the command:
 
 ```text
 host <source checkout> -> guest ~/trybox
@@ -142,8 +138,9 @@ The intended large-repo sync path is intentionally simple:
 3. Warn on very large transfers instead of inventing a more complex source
    overlay too early.
 
-`trybox sync --json` performs the current rsync path and records a fingerprint
-so unchanged worktrees can skip repeated transfers. Successful syncs also store
-the last remote manifest under `~/trybox/.trybox/sync-manifest`; later syncs use
-it to remove files that were deleted, renamed, or newly excluded on the host
-before writing the next fingerprint.
+The current rsync path records a fingerprint so unchanged worktrees can skip
+repeated transfers. Sync transfer progress is emitted on stderr so command
+stdout remains usable. Successful syncs also store the last remote manifest
+under `~/trybox/.trybox/sync-manifest`; later syncs use it to remove files that
+were deleted, renamed, or newly excluded on the host before writing the next
+fingerprint.

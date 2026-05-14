@@ -1,61 +1,95 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jwmossmoz/trybox/internal/state"
-	"github.com/jwmossmoz/trybox/internal/targets"
 )
 
-func TestWorkspaceForDestroyDefaultAndResolvedSelection(t *testing.T) {
-	store := testStore(t)
-	target, err := targets.Get("macos15-arm64")
+func TestTargetNameForUsesFlagEnvConfigDefault(t *testing.T) {
+	t.Setenv("TRYBOX_TARGET", "macos14-arm64")
+	got := targetNameFor(&options{Target: "macos13-arm64", TargetSet: true}, state.Config{DefaultTarget: "macos12-arm64"})
+	if got != "macos13-arm64" {
+		t.Fatalf("targetNameFor(flag) = %q, want macos13-arm64", got)
+	}
+
+	got = targetNameFor(&options{}, state.Config{DefaultTarget: "macos12-arm64"})
+	if got != "macos14-arm64" {
+		t.Fatalf("targetNameFor(env) = %q, want macos14-arm64", got)
+	}
+
+	t.Setenv("TRYBOX_TARGET", "")
+	got = targetNameFor(&options{}, state.Config{DefaultTarget: "macos12-arm64"})
+	if got != "macos12-arm64" {
+		t.Fatalf("targetNameFor(config) = %q, want macos12-arm64", got)
+	}
+
+	got = targetNameFor(&options{}, state.Config{})
+	if got != "macos15-arm64" {
+		t.Fatalf("targetNameFor(default) = %q, want macos15-arm64", got)
+	}
+}
+
+func TestResolveRepoUsesEnv(t *testing.T) {
+	repo := canonicalTestPath(t, t.TempDir())
+	t.Setenv("TRYBOX_REPO", repo)
+	got, err := resolveRepo("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	repoA := t.TempDir()
-	repoB := t.TempDir()
-	repoA = canonicalTestPath(t, repoA)
-	repoB = canonicalTestPath(t, repoB)
-	workspaceA := testWorkspace(target, repoA)
-	workspaceB := testWorkspace(target, repoB)
-	if err := store.SaveWorkspace(workspaceA); err != nil {
-		t.Fatal(err)
+	if got != repo {
+		t.Fatalf("resolveRepo(env) = %q, want %q", got, repo)
 	}
-	if err := store.SaveWorkspace(workspaceB); err != nil {
-		t.Fatal(err)
-	}
-	config := state.Config{
-		DefaultTarget:      target.Name,
-		DefaultRepoRoot:    repoA,
-		DefaultWorkspaceID: workspaceA.ID,
-	}
+}
 
-	got, selection, err := workspaceForDestroy("", store, config)
-	if err != nil {
+func TestApplyEnvOptionsResources(t *testing.T) {
+	t.Setenv("TRYBOX_CPU", "10")
+	t.Setenv("TRYBOX_MEMORY_MB", "24576")
+	t.Setenv("TRYBOX_DISK_GB", "100")
+	opts := &options{Resources: true}
+	if err := applyEnvOptions(opts); err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != workspaceA.ID || selection != "default workspace" {
-		t.Fatalf("workspaceForDestroy(default) = %s/%s, want %s/default workspace", got.ID, selection, workspaceA.ID)
+	if opts.CPU != 10 || opts.MemoryMB != 24576 || opts.DiskGB != 100 {
+		t.Fatalf("applyEnvOptions() = cpu %d memory %d disk %d", opts.CPU, opts.MemoryMB, opts.DiskGB)
 	}
+}
 
-	got, selection, err = workspaceForDestroy(workspaceB.ID, store, config)
-	if err != nil {
-		t.Fatal(err)
+func TestApplyEnvOptionsRejectsInvalidResource(t *testing.T) {
+	t.Setenv("TRYBOX_CPU", "nope")
+	if err := applyEnvOptions(&options{Resources: true}); err == nil {
+		t.Fatal("applyEnvOptions(invalid) returned nil error, want failure")
 	}
-	if got.ID != workspaceB.ID || selection != "selected workspace" {
-		t.Fatalf("workspaceForDestroy(id) = %s/%s, want %s/selected workspace", got.ID, selection, workspaceB.ID)
-	}
+}
 
-	if _, _, err := workspaceForDestroy("workspace_does_not_exist", store, config); err == nil {
-		t.Fatal("workspaceForDestroy(missing) returned nil error, want failure")
+func TestViewClientNames(t *testing.T) {
+	if got := viewDisplayName(false); got != "tart-native" {
+		t.Fatalf("viewDisplayName(native) = %q, want tart-native", got)
+	}
+	if got := viewDisplayName(true); got != "tart-vnc" {
+		t.Fatalf("viewDisplayName(vnc) = %q, want tart-vnc", got)
+	}
+	if got := viewClientName(false); got != "tart" {
+		t.Fatalf("viewClientName(native) = %q, want tart", got)
+	}
+	if got := viewClientName(true); got != "none" {
+		t.Fatalf("viewClientName(vnc) = %q, want none", got)
+	}
+}
+
+func TestLatestTartVNCURL(t *testing.T) {
+	logText := strings.Join([]string{
+		"booting",
+		"Opening vnc://:old-password@127.0.0.1:5900...",
+		"other output",
+		"Opening vnc://:new-password@127.0.0.1:52549...",
+	}, "\n")
+	got := latestTartVNCURL(logText)
+	want := "vnc://:new-password@127.0.0.1:52549"
+	if got != want {
+		t.Fatalf("latestTartVNCURL() = %q, want %q", got, want)
 	}
 }
 
@@ -91,107 +125,21 @@ func TestDeleteChunkSplitsLargeCommands(t *testing.T) {
 	}
 }
 
-func TestParseInterspersedFlagsAllowsTrailingJSON(t *testing.T) {
-	fs, opts := commandFlags("destroy", flagSpec{JSON: true})
-	if handled, err := parseInterspersedFlags(fs, []string{"workspace_test", "--json"}); handled || err != nil {
-		t.Fatalf("parseInterspersedFlags() handled=%t err=%v", handled, err)
-	}
-	if !opts.JSON {
-		t.Fatal("opts.JSON = false, want true")
-	}
-	if got := fs.Args(); len(got) != 1 || got[0] != "workspace_test" {
-		t.Fatalf("fs.Args() = %v, want workspace_test", got)
+func TestRsyncProgressArgsPreferProgress2(t *testing.T) {
+	help := "Usage: rsync [OPTION]...\n     --info=FLAGS fine-grained informational verbosity\n"
+	got := rsyncProgressArgsFromHelp(help)
+	want := []string{"--info=progress2"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("rsyncProgressArgsFromHelp() = %v, want %v", got, want)
 	}
 }
 
-func TestParseLogsArgsAllowsFlagsBeforeOrAfterRunID(t *testing.T) {
-	runID, opts, err := parseLogsArgs([]string{"run_1", "--follow", "--from-end"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runID != "run_1" || !opts.Follow || !opts.FromEnd {
-		t.Fatalf("parseLogsArgs(after) = %q %+v, want follow/from-end", runID, opts)
-	}
-	runID, opts, err = parseLogsArgs([]string{"-f", "run_2"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runID != "run_2" || !opts.Follow || opts.FromEnd {
-		t.Fatalf("parseLogsArgs(before) = %q %+v, want follow only", runID, opts)
-	}
-}
-
-func TestFollowRunLogsCompletedReturnsExitCode(t *testing.T) {
-	store := testStore(t)
-	run := testRun(t, store, "run_follow_completed")
-	run.EndedAt = time.Now().UTC()
-	run.ExitCode = 7
-	if err := store.SaveRun(run); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, run.StdoutLog, "stdout\n")
-	writeFile(t, run.StderrLog, "stderr\n")
-
-	var out bytes.Buffer
-	err := followRunLogs(context.Background(), &out, store, run.ID, logFollowOptions{})
-	var exit exitError
-	if !errors.As(err, &exit) || exit.Code != 7 {
-		t.Fatalf("followRunLogs() error = %v, want exit 7", err)
-	}
-	if got, want := out.String(), "stdout\nstderr\n"; got != want {
-		t.Fatalf("followRunLogs() output = %q, want %q", got, want)
-	}
-}
-
-func TestFollowRunLogsUsesCommandFinishedEvent(t *testing.T) {
-	store := testStore(t)
-	run := testRun(t, store, "run_follow_event")
-	if err := store.SaveRun(run); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, run.StdoutLog, "ready\n")
-	if err := store.AppendEvent(run, "command_finished", map[string]any{"exit_code": 3}); err != nil {
-		t.Fatal(err)
-	}
-
-	var out bytes.Buffer
-	err := followRunLogs(context.Background(), &out, store, run.ID, logFollowOptions{})
-	var exit exitError
-	if !errors.As(err, &exit) || exit.Code != 3 {
-		t.Fatalf("followRunLogs() error = %v, want exit 3", err)
-	}
-	if got, want := out.String(), "ready\n"; got != want {
-		t.Fatalf("followRunLogs() output = %q, want %q", got, want)
-	}
-}
-
-func TestCopyAvailableLogFromEnd(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "stdout.log")
-	writeFile(t, path, "old\n")
-	offset := int64(-1)
-	var out bytes.Buffer
-	if err := copyAvailableLog(&out, path, &offset, true); err != nil {
-		t.Fatal(err)
-	}
-	if out.Len() != 0 {
-		t.Fatalf("copyAvailableLog(fromEnd) output = %q, want empty", out.String())
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.WriteString("new\n"); err != nil {
-		f.Close()
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := copyAvailableLog(&out, path, &offset, true); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := out.String(), "new\n"; got != want {
-		t.Fatalf("copyAvailableLog() output = %q, want %q", got, want)
+func TestRsyncProgressArgsFallbackToProgress(t *testing.T) {
+	help := "openrsync: protocol version 29\n     [--progress] [--protocol=NUM]\n"
+	got := rsyncProgressArgsFromHelp(help)
+	want := []string{"--progress"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("rsyncProgressArgsFromHelp() = %v, want %v", got, want)
 	}
 }
 
@@ -211,44 +159,6 @@ func testStore(t *testing.T) state.Store {
 	return store
 }
 
-func testRun(t *testing.T, store state.Store, id string) state.Run {
-	t.Helper()
-	dir := store.RunDir(id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	return state.Run{
-		SchemaVersion: 1,
-		ID:            id,
-		WorkspaceID:   "workspace_test",
-		Target:        "macos15-arm64",
-		VMName:        "trybox-ws-test",
-		RepoRoot:      t.TempDir(),
-		Command:       []string{"echo", "test"},
-		StartedAt:     time.Now().UTC(),
-		ExitCode:      -1,
-		StdoutLog:     filepath.Join(dir, "stdout.log"),
-		StderrLog:     filepath.Join(dir, "stderr.log"),
-		EventsLog:     filepath.Join(dir, "events.ndjson"),
-	}
-}
-
-func testWorkspace(target targets.Target, repo string) state.Workspace {
-	id := state.WorkspaceID(target.Name, repo)
-	return state.Workspace{
-		ID:           id,
-		Target:       target.Name,
-		Backend:      target.Backend,
-		VMName:       state.WorkspaceVMName(id),
-		RepoRoot:     repo,
-		RepoRootHash: state.RepoRootHash(repo),
-		CPU:          target.CPU,
-		MemoryMB:     target.MemoryMB,
-		DiskGB:       target.DiskGB,
-		CreatedAt:    time.Now().UTC(),
-	}
-}
-
 func canonicalTestPath(t *testing.T, path string) string {
 	t.Helper()
 	canonical, err := canonicalPath(path)
@@ -256,14 +166,4 @@ func canonicalTestPath(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return canonical
-}
-
-func writeFile(t *testing.T, path string, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
 }

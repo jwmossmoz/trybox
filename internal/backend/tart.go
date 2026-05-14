@@ -111,7 +111,7 @@ func (t Tart) Start(ctx context.Context, target targets.Target, workspace state.
 
 	args := []string{"run", "--no-clipboard", "--no-audio", "--suspendable"}
 	if opts.VNC {
-		args = append(args, "--vnc")
+		args = append(args, "--vnc-experimental")
 	} else if opts.Headless {
 		args = append(args, "--no-graphics")
 	}
@@ -177,7 +177,7 @@ func (t Tart) Exec(ctx context.Context, target targets.Target, workspace state.W
 
 func (t Tart) SnapshotSave(ctx context.Context, target targets.Target, workspace state.Workspace, snapshotVMName string) error {
 	if !t.Exists(ctx, workspace.VMName) {
-		return fmt.Errorf("workspace VM %q does not exist; run trybox up first", workspace.VMName)
+		return fmt.Errorf("VM %q does not exist; run trybox run first", workspace.VMName)
 	}
 	if t.Exists(ctx, snapshotVMName) {
 		return fmt.Errorf("snapshot VM %q already exists", snapshotVMName)
