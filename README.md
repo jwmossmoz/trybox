@@ -18,6 +18,7 @@ Prerequisites:
 - Apple Silicon macOS host
 - Go
 - Tart
+- Packer
 - Source checkout on the host
 - SSH-ready Trybox target image
 
@@ -33,11 +34,16 @@ When working inside this repository, this is also fine:
 go install ./cmd/trybox
 ```
 
-Create the default Tart image until `trybox bootstrap` exists:
+Build the default local Tart image from a fresh macOS restore image until
+`trybox bootstrap` exists:
 
 ```sh
-tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
+scripts/build-local-macos-image.sh --replace
 ```
+
+The script wraps a small Packer Tart template. It creates the VM from an IPSW,
+drives macOS Setup Assistant, runs the shell provisioners, then renames the
+successful build to Trybox's local target image name.
 
 Check the host and target image:
 
@@ -110,7 +116,7 @@ When handing Trybox work to an agent, paste a single quoted prompt like this and
 replace `<checkout>` and `<command>`:
 
 ```sh
-'Use Trybox for <checkout>: install missing deps (`brew install go cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
+'Use Trybox for <checkout>: install missing deps (`brew install go packer cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `scripts/build-local-macos-image.sh --replace`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
 ```
 
 ## Commands

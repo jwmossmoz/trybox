@@ -61,9 +61,9 @@ It should keep Tart details out of the normal `run` workflow.
 
 Phase 0:
 
-- Use a public Tart macOS base image as a seed.
-- Create a local Trybox target image.
-- Verify SSH and basic guest readiness.
+- Use Packer and Tart to create a local Trybox target image from an IPSW.
+- Run shell provision scripts while the image contents are still changing.
+- Verify SSH, the Tart guest agent, and basic guest readiness.
 
 Phase 1:
 
@@ -79,7 +79,7 @@ Phase 2:
 - Add `trybox image build`, `trybox image publish`, and `trybox image inspect`.
 - Extend the same model to Windows targets.
 
-## Initial Tart Seed
+## Public Tart Seed Reference
 
 Tart's official quick start documents public macOS images, including
 `ghcr.io/cirruslabs/macos-sequoia-base:latest`, and lists the default
@@ -89,8 +89,8 @@ Tart's official quick start documents public macOS images, including
 https://tart.run/quick-start/
 ```
 
-That is enough for a first `trybox bootstrap`, but Trybox should treat it as a
-seed, not as the stable source image.
+Those images are useful as a fallback and comparison point, but the local
+scratch recipe should not depend on cloning them.
 
 ## Tart macOS Seed Coverage
 
@@ -107,3 +107,37 @@ publishes public base images for:
 
 Those seed names are an implementation aid for bootstrap. The normal agent
 workflow should still use Trybox targets, not Tart image names.
+
+## Quick Local Packer Build
+
+Before `trybox bootstrap` exists, build the default local target image with:
+
+```sh
+scripts/build-local-macos-image.sh --replace
+```
+
+The script runs `packer init`, `packer validate`, and `packer build` against
+`images/macos/packer/trybox.pkr.hcl`. The template creates a fresh Tart VM from a
+macOS restore image with `from_ipsw`, drives Setup Assistant with a boot command,
+runs the scripts in `images/macos/provision.d`, stops the VM, and the wrapper
+renames a successful temporary VM to Trybox's local target image name, such as
+`trybox-macos15-arm64-image`.
+
+Use it with an explicit IPSW path or URL when the target default is not the
+macOS build you want:
+
+```sh
+scripts/build-local-macos-image.sh --ipsw /path/to/UniversalMac_15.x_Restore.ipsw --replace
+```
+
+The provision scripts intentionally mirror the useful parts of Cirrus Labs'
+Packer template: shell profile setup, high file descriptor limits, Spotlight
+disablement, Homebrew build dependencies, Rosetta, GitHub known hosts, Xcode
+first-launch handling when Xcode exists, TCC grants for UI automation, and the
+Tart guest agent.
+
+After the image exists locally, try it from a Firefox checkout:
+
+```sh
+TRYBOX_TARGET=macos15-arm64 trybox run -- ./mach --version
+```
