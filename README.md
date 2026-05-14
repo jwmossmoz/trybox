@@ -53,12 +53,25 @@ scripts/check-integration.sh
 The default check runs `go test ./...`, builds `trybox`, and exercises the
 PR-safe CLI workflow against an isolated temporary `HOME` and disposable git
 fixture. It does not require Tart or a local target image.
+The script prints each host and Trybox command before running it so saved logs
+show exactly which step was active.
 
 To include the VM-backed workflow on a host with Tart and a local target image:
 
 ```sh
 TRYBOX_INTEGRATION_VM=1 scripts/check-integration.sh
 ```
+
+For the full local integration pass against a real Gecko checkout, run:
+
+```sh
+TRYBOX_INTEGRATION_FIREFOX=1 FIREFOX_REPO=~/firefox scripts/check-integration.sh
+```
+
+That mode syncs the Firefox checkout into a Trybox VM, runs a lightweight mach
+Python smoke command, checks logs/events/history, and exercises snapshot
+save/list/restore/delete. Override the guest command with
+`TRYBOX_FIREFOX_MACH_COMMAND` when you want a heavier mach check.
 
 ## Common Flows
 
