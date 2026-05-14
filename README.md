@@ -2,18 +2,29 @@
 
 Run a dirty checkout in a clean local VM.
 
-Trybox is a local counterpart to the "try it somewhere clean" workflow: it
-syncs your current checkout into a local VM, runs the command there, streams
-output, and keeps durable logs. The first backend is Tart on Apple Silicon
-macOS.
+```sh
+trybox run -- ./build-or-test-command test
+```
+
+Trybox is the local version of "try this somewhere clean." It creates or reuses
+a VM for your current source checkout, syncs the dirty checkout into the guest,
+runs the command you pass, streams output, and keeps durable logs/events for
+humans and agents. The first backend is Tart on Apple Silicon macOS.
 
 ## What It Does
 
-- Creates and reuses a VM for the selected repo and target.
-- Syncs tracked files, VCS metadata, and nonignored local changes before each run.
-- Runs checkout-local commands in the guest.
-- Opens the VM desktop through Tart's native window or Tart VNC.
-- Stores run logs, events, and VM state under `~/.trybox`.
+- Creates one VM for each selected repo and target.
+- Syncs tracked files, VCS metadata, and nonignored local changes before each
+  run.
+- Runs checkout-local commands from the guest checkout.
+- Streams command output while also recording durable logs and events.
+- Opens the VM desktop through Tart's native window or Tart's VNC endpoint.
+- Stores VM metadata, run logs, events, backend logs, and SSH keys under
+  `~/.trybox`.
+
+Trybox does not guess what command you meant to run. If you want to launch an
+app, pass the app launch command. If your command needs build artifacts, build
+them in the guest or make sure they are included in the synced checkout.
 
 ## Quick Start
 
@@ -21,32 +32,106 @@ Prerequisites:
 
 - Apple Silicon macOS host
 - Tart installed
-- SSH-ready Trybox macOS target image
 - Source checkout on the host
+- SSH-ready Trybox target image
+
+From this repository, build or install Trybox:
 
 ```sh
-go run ./cmd/trybox doctor
+go install ./cmd/trybox
+```
+
+Create the default target image until `trybox bootstrap` exists:
+
+```sh
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
-go run ./cmd/trybox run --target macos15-arm64 -- env
-go run ./cmd/trybox logs
-go run ./cmd/trybox view --vnc
 ```
 
-Build a local binary when the command shape is stable enough for repeated use:
+Run from a source checkout:
 
 ```sh
-go build -o trybox ./cmd/trybox
-./trybox run -- ./build-or-test-command test
+cd ~/src/project
+trybox doctor
+trybox run -- ./build-or-test-command test
+trybox logs
+trybox view
+trybox view --vnc
 ```
+
+The normal command is intentionally short. `trybox run -- <command>` selects the
+repo, selects the target, creates or starts the VM, syncs the checkout, runs the
+command in `/Users/admin/trybox`, streams output, and records logs/events.
+
+## What Happens On `run`
+
+1. Trybox resolves the target and source checkout.
+2. It creates or reuses the repo-bound VM for that target.
+3. It starts the VM headless if it is not already running.
+4. It builds a manifest from tracked files, VCS metadata, and nonignored local
+   files.
+5. It syncs that manifest into the guest checkout and removes stale files.
+6. It runs the command from `/Users/admin/trybox`.
+7. It records stdout, stderr, combined logs, run metadata, and events under
+   `~/.trybox/runs`.
+
+## Output For Humans And Agents
+
+Human output is the default. `trybox run` prints VM, sync, command, summary, and
+log pointers while keeping guest stdout on stdout:
+
+```text
+run context:
+  run=run_... logs=trybox logs run_... events=trybox events run_...
+  target=macos15-arm64 vm=trybox-ws-... repo=/path/to/project
+  workdir=/Users/admin/trybox
+vm:        ensuring trybox-ws-...
+sync:      preparing checkout
+command:   './build-or-test-command' 'test'
+summary:   sync=... command=... total=... exit=0
+logs:      trybox logs run_...
+```
+
+Use `--json` when a script or agent needs structured output:
+
+```sh
+trybox status --json
+trybox run --json -- ./build-or-test-command test
+trybox logs run_... --json
+trybox events run_... --json
+```
+
+For human runs, Trybox phase/status lines and command stderr go to stderr, while
+guest stdout stays on stdout. With `--json`, stdout is reserved for JSON and
+command output is available through `trybox logs`. Automation should read JSON
+from stdout and treat stderr as diagnostics.
+
+## Desktop Access
+
+Open the VM desktop with Tart's native window:
+
+```sh
+trybox view
+```
+
+Start Tart's VNC endpoint and print the URL for your own client:
+
+```sh
+trybox view --vnc
+trybox view --vnc --json
+```
+
+`trybox view --vnc` does not launch Apple Screen Sharing. It starts Tart's VNC
+mode, prints the localhost `vnc://` endpoint, and leaves client choice to you.
 
 ## Defaults
 
-`trybox run -- <command>` is the main workflow. It picks defaults in this order:
+Trybox chooses defaults so the normal command stays short:
 
-- Target: `--target`, then `TRYBOX_TARGET`, then saved config, then `macos15-arm64`.
-- Repo: `--repo`, then `TRYBOX_REPO`, then the current git checkout.
-- VM resources: `--cpu`, `--memory-mb`, `--disk-gb`, then `TRYBOX_CPU`,
-  `TRYBOX_MEMORY_MB`, `TRYBOX_DISK_GB`, then target defaults.
+| Setting | Resolution order |
+| --- | --- |
+| Target | `--target`, then `TRYBOX_TARGET`, then saved config, then `macos15-arm64`. |
+| Repo | `--repo`, then `TRYBOX_REPO`, then the current git checkout. |
+| Resources | `--cpu`, `--memory-mb`, `--disk-gb`, then `TRYBOX_CPU`, `TRYBOX_MEMORY_MB`, `TRYBOX_DISK_GB`, then target defaults. |
 
 Passing `--target` to a VM-backed command records it as the next default target.
 
@@ -61,14 +146,6 @@ trybox history
 trybox events <run-id>
 ```
 
-Open the guest desktop:
-
-```sh
-trybox view                  # Tart native display
-trybox view --vnc            # Tart VNC endpoint
-trybox view --vnc --json     # Tart VNC endpoint as JSON
-```
-
 Inspect or remove the VM for the current repo and target:
 
 ```sh
@@ -76,17 +153,11 @@ trybox status
 trybox destroy
 ```
 
-## CLI Contract
+Use a different checkout or target without changing directories:
 
-- Human-readable output by default.
-- `--json` for agent/script output on commands that return structured state.
-- Trybox phase/status lines and command stderr go to stderr.
-- `trybox run` keeps guest stdout on stdout, prints VM/sync/command phases on
-  stderr, and ends with a timing summary.
-- `trybox logs` prints the latest run log unless a run id is provided; use
-  `--json` for structured log content and paths.
-- `trybox view --vnc` starts Tart's VNC server and prints the localhost endpoint
-  for your VNC client.
+```sh
+TRYBOX_REPO=~/src/project TRYBOX_TARGET=macos15-arm64 trybox run -- ./build-or-test-command
+```
 
 ## Target Images
 
@@ -104,6 +175,13 @@ Until `bootstrap` exists, create the local target image manually with Tart:
 
 ```sh
 tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
+```
+
+List built-in targets and image status:
+
+```sh
+trybox target list
+trybox target list --json
 ```
 
 ## Commands
@@ -124,20 +202,35 @@ trybox view [--target name] [--repo path] [--vnc] [--json]
 checkout, run logs, or metadata. Runtime state on the VM record is cleared so
 the next `trybox run` starts fresh.
 
-## Guest Paths and Shell Expansion
+## Guest Paths And Shell Expansion
 
 The synced checkout lives at `/Users/admin/trybox` inside the guest. The host
 shell expands `~` before `trybox run` sees the argv, so `~/trybox` resolves to
-the host home, not the guest's. Use the absolute guest path, or wrap the command
-in single quotes to defer expansion:
+the host home, not the guest home. Use the absolute guest path, or wrap the
+command in single quotes to defer expansion:
 
 ```sh
-trybox run -- bash -c 'cd /Users/admin/trybox && ./mach --help'
-trybox run -- bash -lc 'cd "$HOME/trybox" && ./mach --help'
+trybox run -- bash -c 'cd /Users/admin/trybox && ./build-or-test-command'
+trybox run -- bash -lc 'cd "$HOME/trybox" && ./build-or-test-command'
 ```
+
+## Development Checks
+
+The repository includes an end-to-end check that builds the local CLI, runs real
+Trybox commands, validates JSON/log/event output, opens the Tart native window,
+starts Tart VNC, and destroys the test VM:
+
+```sh
+./ci/check-integration.sh
+```
+
+It defaults to `~/firefox` today because that is the large local checkout used
+to exercise dirty-source sync behavior. Override it with `TRYBOX_REPO` when you
+want to run the check against another source checkout.
 
 ## More Detail
 
+- [CLI guide](docs/cli.md)
 - [Architecture](docs/architecture.md)
 - [Image model](docs/images.md)
 - [Security model](docs/security.md)
