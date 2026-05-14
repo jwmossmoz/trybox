@@ -125,24 +125,6 @@ func TestDeleteChunkSplitsLargeCommands(t *testing.T) {
 	}
 }
 
-func TestRsyncProgressArgsPreferProgress2(t *testing.T) {
-	help := "Usage: rsync [OPTION]...\n     --info=FLAGS fine-grained informational verbosity\n"
-	got := rsyncProgressArgsFromHelp(help)
-	want := []string{"--info=progress2"}
-	if len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("rsyncProgressArgsFromHelp() = %v, want %v", got, want)
-	}
-}
-
-func TestRsyncProgressArgsFallbackToProgress(t *testing.T) {
-	help := "openrsync: protocol version 29\n     [--progress] [--protocol=NUM]\n"
-	got := rsyncProgressArgsFromHelp(help)
-	want := []string{"--progress"}
-	if len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("rsyncProgressArgsFromHelp() = %v, want %v", got, want)
-	}
-}
-
 func testStore(t *testing.T) state.Store {
 	t.Helper()
 	root := t.TempDir()

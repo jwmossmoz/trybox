@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/jwmossmoz/trybox/internal/backend"
 	"github.com/jwmossmoz/trybox/internal/targets"
@@ -58,11 +57,6 @@ func localToolChecks() []backend.Check {
 	for _, tool := range tools {
 		if path, err := exec.LookPath(tool); err == nil {
 			checks = append(checks, backend.Check{Name: tool, OK: true, Detail: path})
-			if tool == "rsync" {
-				if hint := rsyncVersionHint(path); hint != "" {
-					checks = append(checks, backend.Check{Name: "rsync-version", OK: true, Detail: hint})
-				}
-			}
 		} else {
 			checks = append(checks, backend.Check{Name: tool, OK: false, Detail: tool + " not found in PATH"})
 		}
@@ -120,20 +114,4 @@ func target(ctx context.Context, args []string) error {
 	}
 	_ = ctx
 	return nil
-}
-
-func rsyncVersionHint(path string) string {
-	out, err := exec.Command(path, "--version").Output()
-	if err != nil {
-		return ""
-	}
-	return rsyncVersionHintFromOutput(string(out))
-}
-
-func rsyncVersionHintFromOutput(out string) string {
-	firstLine := strings.SplitN(out, "\n", 2)[0]
-	if strings.Contains(firstLine, "version 2.6.9") {
-		return "system rsync is 2.6.9; brew install rsync for cleaner sync progress"
-	}
-	return ""
 }

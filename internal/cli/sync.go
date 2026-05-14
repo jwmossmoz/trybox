@@ -98,7 +98,6 @@ func syncWorkspaceState(ctx context.Context, target targets.Target, workspaceSta
 	rsyncArgs := []string{
 		"-a",
 	}
-	rsyncArgs = append(rsyncArgs, rsyncTransferProgressArgs(ctx)...)
 	rsyncArgs = append(rsyncArgs,
 		"--from0",
 		"--files-from", manifestPath,
@@ -197,21 +196,6 @@ func writeRemoteManifest(ctx context.Context, target targets.Target, ip string, 
 		return fmt.Errorf("rsync remote manifest failed: %w", err)
 	}
 	return nil
-}
-
-func rsyncTransferProgressArgs(ctx context.Context) []string {
-	out, err := exec.CommandContext(ctx, "rsync", "--help").CombinedOutput()
-	if err != nil {
-		return []string{"--progress"}
-	}
-	return rsyncProgressArgsFromHelp(string(out))
-}
-
-func rsyncProgressArgsFromHelp(help string) []string {
-	if strings.Contains(help, "--info=") {
-		return []string{"--info=progress2"}
-	}
-	return []string{"--progress"}
 }
 
 type newlineTrackingWriter struct {

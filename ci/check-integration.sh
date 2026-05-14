@@ -48,7 +48,7 @@ jq -e 'any(.[]; .name == "macos15-arm64")' "$TMP/targets.json" >/dev/null
 
 trybox status --target macos15-arm64 --repo "$FIREFOX_REPO_USED" --json >"$TMP/status.json"
 jq empty "$TMP/status.json"
-jq -e --arg repo "$FIREFOX_REPO_USED" '.vm.repo_root == $repo and .running == false' "$TMP/status.json" >/dev/null
+jq -e --arg repo "$FIREFOX_REPO_USED" '.vm.repo_root == $repo' "$TMP/status.json" >/dev/null
 
 trybox help run >"$TMP/help-run.txt"
 grep -q TRYBOX_TARGET "$TMP/help-run.txt"

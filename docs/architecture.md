@@ -139,8 +139,8 @@ The intended large-repo sync path is intentionally simple:
    overlay too early.
 
 The current rsync path records a fingerprint so unchanged worktrees can skip
-repeated transfers. Sync transfer progress is emitted on stderr so command
-stdout remains usable. Successful syncs also store the last remote manifest
-under `~/trybox/.trybox/sync-manifest`; later syncs use it to remove files that
-were deleted, renamed, or newly excluded on the host before writing the next
-fingerprint.
+repeated transfers. Sync status is emitted on stderr so command stdout remains
+usable without flooding the terminal. Successful syncs also store the last
+remote manifest under `~/trybox/.trybox/sync-manifest`; later syncs use it to
+remove files that were deleted, renamed, or newly excluded on the host before
+writing the next fingerprint.

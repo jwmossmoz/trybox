@@ -81,7 +81,7 @@ trybox destroy
 - Human-readable output by default.
 - `--json` for agent/script output on commands that return structured state.
 - Diagnostics and command stderr go to stderr.
-- `trybox run` sync progress goes to stderr; command stdout streams to stdout.
+- `trybox run` sync status goes to stderr; command stdout streams to stdout.
 - `trybox logs` prints the latest run log unless a run id is provided.
 - `trybox view --vnc` starts Tart's VNC server and prints the localhost endpoint
   for your VNC client.

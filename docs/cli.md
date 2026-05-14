@@ -129,6 +129,6 @@ Use `--json` for scripts, automation, and agent workflows. JSON output is meant
 to be stable enough for tooling, while human output can change to become more
 readable.
 
-Commands that run guest processes may still write diagnostics and sync progress
+Commands that run guest processes may still write diagnostics and sync status
 to stderr. Automation should read structured results from stdout and treat
 stderr as diagnostics.
