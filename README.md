@@ -105,6 +105,19 @@ guest stdout stays on stdout. With `--json`, stdout is reserved for JSON and
 command output is available through `trybox logs`. Automation should read JSON
 from stdout and treat stderr as diagnostics.
 
+## What To Tell An Agent
+
+When handing Trybox work to an agent, give it the checkout, target, and command
+instead of asking it to infer the workflow:
+
+```text
+Use Trybox to run this checkout in a clean local VM.
+Set TRYBOX_REPO=<checkout> and TRYBOX_TARGET=macos15-arm64 unless already configured.
+Run trybox doctor --json, then trybox run -- <command>.
+Stream the run output, then inspect trybox logs and trybox events <run-id> --json.
+Use trybox view for Tart's native window and trybox view --vnc only when I ask for a VNC endpoint.
+```
+
 ## Desktop Access
 
 Open the VM desktop with Tart's native window:
