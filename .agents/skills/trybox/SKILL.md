@@ -53,7 +53,7 @@ Use this single quoted prompt when handing Trybox setup/use to another agent.
 Replace `<checkout>` and `<command>`:
 
 ```sh
-'Set up Trybox on this Apple Silicon macOS host and use it for <checkout>: require or install prerequisites (`brew install go cirruslabs/cli/tart` if missing); install Trybox (`go install github.com/jwmossmoz/trybox/cmd/trybox@main`, or `go install ./cmd/trybox` when already in the Trybox source repo); set `TRYBOX_REPO=<checkout>` and `TRYBOX_TARGET=${TRYBOX_TARGET:-macos15-arm64}`; run `trybox doctor --json`; if the target image is missing, run `tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image` and rerun doctor; run `trybox run -- <command>` and stream output; after completion run `trybox logs`, get the latest run id with `trybox history --limit 1 --json`, and inspect `trybox events <run-id> --json`; use `trybox view` for Tart native desktop and `trybox view --vnc` only when I ask for a Tart VNC endpoint.'
+'Use Trybox for <checkout>: install missing deps (`brew install go cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
 ```
 
 ## Usage

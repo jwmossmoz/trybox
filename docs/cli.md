@@ -5,8 +5,7 @@ version is:
 
 ```sh
 cd ~/src/project
-trybox run --target macos15-arm64 -- ./build-or-test-command
-trybox logs
+trybox run -- ./build-or-test-command
 ```
 
 `trybox run` is the main command. It selects the repo and target, creates or
