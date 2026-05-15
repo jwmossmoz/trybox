@@ -79,6 +79,24 @@ func TestViewClientNames(t *testing.T) {
 	}
 }
 
+func TestBootstrapHelpExists(t *testing.T) {
+	if got := commandUsage("bootstrap"); !strings.Contains(got, "trybox bootstrap") || !strings.Contains(got, "--replace") {
+		t.Fatalf("commandUsage(bootstrap) = %q", got)
+	}
+}
+
+func TestBootstrapViewJSONShape(t *testing.T) {
+	view := bootstrapView{
+		Target:       "macos15-arm64",
+		ImageName:    "trybox-macos15-arm64-image",
+		SourceImage:  "ghcr.io/cirruslabs/macos-sequoia-base:latest",
+		ImagePresent: true,
+	}
+	if view.Target == "" || view.ImageName == "" || view.SourceImage == "" || !view.ImagePresent {
+		t.Fatalf("bootstrapView = %+v", view)
+	}
+}
+
 func TestLatestTartVNCURL(t *testing.T) {
 	logText := strings.Join([]string{
 		"booting",

@@ -53,7 +53,9 @@ an agent workflow.
 - `trybox run` should hide VM startup and source sync internals.
 - Trybox runs exactly the command the user passes. Do not add hidden project or
   application launch behavior to `run`.
-- `trybox bootstrap` is planned for first-time target image setup.
+- `trybox bootstrap` is the explicit first-time target image setup and repair
+  path. `trybox run` should also bootstrap the target image automatically when
+  it is missing.
 - Trybox target images should eventually be owned and pinned by Trybox.
 - Public Tart images may be useful as bootstrap seeds, not as the long-term
   tool contract.

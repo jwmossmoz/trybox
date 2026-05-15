@@ -44,7 +44,7 @@ func (t Tart) Doctor(ctx context.Context, target targets.Target) []Check {
 	detail := "target image available"
 	ok := t.Exists(ctx, target.ImageName)
 	if !ok {
-		detail = fmt.Sprintf("target image missing; run: tart clone %s %s", shellQuote(target.SourceImage), shellQuote(target.ImageName))
+		detail = fmt.Sprintf("target image missing; run: trybox bootstrap --target %s", shellQuote(target.Name))
 	}
 	checks = append(checks, Check{Name: "target-image", OK: ok, Detail: detail})
 	return checks
@@ -68,12 +68,10 @@ func (t Tart) IsRunning(ctx context.Context, vmName string) bool {
 
 func (t Tart) Create(ctx context.Context, target targets.Target, workspace state.Workspace) error {
 	if !t.Exists(ctx, target.ImageName) {
-		return fmt.Errorf("target %q needs local target image %q; run: trybox bootstrap --target %s (or tart clone %s %s)",
+		return fmt.Errorf("target %q needs local target image %q; run: trybox bootstrap --target %s",
 			target.Name,
 			target.ImageName,
-			target.Name,
-			shellQuote(target.SourceImage),
-			shellQuote(target.ImageName),
+			shellQuote(target.Name),
 		)
 	}
 	if t.Exists(ctx, workspace.VMName) {

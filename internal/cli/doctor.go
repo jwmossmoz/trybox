@@ -108,8 +108,8 @@ func target(ctx context.Context, args []string) error {
 			image = "present"
 		}
 		fmt.Printf("%-26s %-9s %-8s %-10s %-8s %s\n", target.Name, runnable, target.OS, target.Version, target.Arch, image)
-		if target.CloneCommand != "" {
-			fmt.Printf("  clone: %s\n", target.CloneCommand)
+		if target.BootstrapCommand != "" {
+			fmt.Printf("  bootstrap: %s\n", target.BootstrapCommand)
 		}
 	}
 	_ = ctx

@@ -27,6 +27,17 @@ func printCommandHelp(parts []string) error {
 
 func commandUsage(name string) string {
 	usages := map[string]string{
+		"bootstrap": `trybox bootstrap: create the local target image
+
+Usage:
+  trybox bootstrap [--target name] [--replace] [--json]
+
+Notes:
+  Early beta behavior clones the target's Cirrus Labs source image into
+  Trybox's local target image name. Later this command can switch to
+  Trybox-owned images without changing the setup flow.
+  trybox run also bootstraps the target image automatically when missing.
+`,
 		"destroy": `trybox destroy: delete the VM for the selected repo and target
 
 Usage:
@@ -66,6 +77,7 @@ Usage:
 Defaults:
   target: --target, then TRYBOX_TARGET, then saved config, then macos15-arm64.
   repo:   --repo, then TRYBOX_REPO, then the current git checkout.
+  If the target image is missing, run bootstraps it automatically.
 `,
 		"status": `trybox status: show VM state
 
@@ -100,6 +112,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `trybox: run a dirty checkout in a clean local VM
 
 Usage:
+  trybox bootstrap [--target name] [--replace] [--json]
   trybox destroy [--target name] [--repo path] [--json]
   trybox doctor [--target name] [--json]
   trybox events <run-id> [--json]

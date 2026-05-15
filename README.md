@@ -4,69 +4,37 @@
 > Trybox is early beta and expected to break. Use it with caution for now,
 > especially around local VM state, source sync, and long-running commands.
 
-Run a dirty checkout in a clean local VM.
+Run a dirty checkout in a clean local VM. The first backend is Tart on Apple
+Silicon macOS.
 
 ```sh
-cd ~/src/project
-trybox run -- ./build-or-test-command test
-```
-
-Trybox syncs your current source checkout into a repo-bound local VM, runs the
-command you pass, streams output, and keeps durable logs/events. The first
-backend is Tart on Apple Silicon macOS.
-
-## First-Time Setup
-
-Prerequisites:
-
-- Apple Silicon macOS host
-- Go
-- Tart
-- Packer
-- Source checkout on the host
-- SSH-ready Trybox target image
-
-Install Trybox:
-
-```sh
+brew install go cirruslabs/cli/tart
 go install github.com/jwmossmoz/trybox/cmd/trybox@main
-```
-
-When working inside this repository, this is also fine:
-
-```sh
-go install ./cmd/trybox
-```
-
-Build the default local Tart image from a fresh macOS restore image until
-`trybox bootstrap` exists:
-
-```sh
-ci/build-local-macos-image.sh --replace
-```
-
-The script wraps a small Packer Tart template. It creates the VM from an IPSW,
-drives macOS Setup Assistant, runs the shell provisioners, then renames the
-successful build to Trybox's local target image name.
-
-Check the host and target image:
-
-```sh
-trybox doctor
-```
-
-## Daily Use
-
-Run from the checkout you want to test:
-
-```sh
 cd ~/src/project
 trybox run -- ./build-or-test-command test
 ```
 
 That is the main workflow. `trybox run -- <command>` selects the repo, selects
-the target, starts the VM if needed, syncs the checkout, runs the command in the
-guest, streams output, and records logs/events.
+the target, bootstraps the target image if it is missing, starts the VM if
+needed, syncs the checkout, runs the command in the guest, streams output, and
+records logs/events.
+
+When working inside this repository, install local changes with:
+
+```sh
+go install ./cmd/trybox
+```
+
+Use `trybox bootstrap` only when you want to prefetch or refresh the target
+image explicitly. For now, it clones the target's Cirrus Labs source image into
+Trybox's local target image name.
+
+```sh
+trybox bootstrap
+trybox bootstrap --replace
+```
+
+## After A Run
 
 Useful follow-ups:
 
@@ -120,12 +88,13 @@ When handing Trybox work to an agent, paste a single quoted prompt like this and
 replace `<checkout>` and `<command>`:
 
 ```sh
-'Use Trybox for <checkout>: install missing deps (`brew install go packer cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `ci/build-local-macos-image.sh --replace`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
+'Use Trybox for <checkout>: install missing deps (`brew install go cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, then run `trybox run -- <command>`; Trybox bootstraps the target image if missing; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
 ```
 
 ## Commands
 
 ```sh
+trybox bootstrap [--target name] [--replace] [--json]
 trybox destroy [--target name] [--repo path] [--json]
 trybox doctor [--target name] [--json]
 trybox events <run-id> [--json]

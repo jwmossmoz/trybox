@@ -40,11 +40,11 @@ Before using Trybox, verify or ask the user for:
   ```
 
 - Tart installed on an Apple Silicon macOS host.
-- A local SSH-ready target image. Until `trybox bootstrap` exists, create the
-  default image with:
+- A local SSH-ready target image. `trybox run` creates the default image when
+  missing. To prefetch it, run:
 
   ```sh
-  tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image
+  trybox bootstrap
   ```
 
 ## What To Tell Another Agent
@@ -53,14 +53,12 @@ Use this single quoted prompt when handing Trybox setup/use to another agent.
 Replace `<checkout>` and `<command>`:
 
 ```sh
-'Use Trybox for <checkout>: install missing deps (`brew install go cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, run `trybox doctor --json` and if the image is missing run `tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest trybox-macos15-arm64-image`, then run `trybox run -- <command>`; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
+'Use Trybox for <checkout>: install missing deps (`brew install go cirruslabs/cli/tart`; `go install github.com/jwmossmoz/trybox/cmd/trybox@main`), set `TRYBOX_REPO=<checkout> TRYBOX_TARGET=macos15-arm64`, then run `trybox run -- <command>`; Trybox bootstraps the target image if missing; report `trybox logs` and `trybox events <run-id> --json`; open `trybox view` or `trybox view --vnc` only if asked.'
 ```
 
 ## Usage
 
 ```sh
-trybox doctor --json
-trybox target list --json
 trybox run --target <target> --repo <checkout> --cpu <n> --memory-mb <mib> --disk-gb <gib> -- <command>
 trybox logs
 trybox history --limit 1 --json
@@ -69,7 +67,8 @@ trybox events <run-id> --json
 
 Default repo is `TRYBOX_REPO` or the current git checkout. Default target is
 `TRYBOX_TARGET`, saved config, or `macos15-arm64`. Choose targets from the user
-request or `target list`.
+request or `trybox target list --json`. Use `trybox doctor --json` for host
+diagnostics, and `trybox bootstrap` only to prefetch or refresh a target image.
 
 ## Desktop
 

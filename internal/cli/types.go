@@ -27,16 +27,26 @@ type syncResult struct {
 }
 
 type targetView struct {
-	Name         string `json:"name"`
-	OS           string `json:"os"`
-	Version      string `json:"version"`
-	Arch         string `json:"arch"`
-	Runnable     bool   `json:"runnable"`
-	ImageName    string `json:"image_name,omitempty"`
-	SourceImage  string `json:"source_image,omitempty"`
+	Name             string `json:"name"`
+	OS               string `json:"os"`
+	Version          string `json:"version"`
+	Arch             string `json:"arch"`
+	Runnable         bool   `json:"runnable"`
+	ImageName        string `json:"image_name,omitempty"`
+	SourceImage      string `json:"source_image,omitempty"`
+	ImagePresent     bool   `json:"image_present"`
+	BootstrapCommand string `json:"bootstrap_command,omitempty"`
+	Notes            string `json:"notes,omitempty"`
+}
+
+type bootstrapView struct {
+	Target       string `json:"target"`
+	ImageName    string `json:"image_name"`
+	SourceImage  string `json:"source_image"`
 	ImagePresent bool   `json:"image_present"`
-	CloneCommand string `json:"clone_command,omitempty"`
-	Notes        string `json:"notes,omitempty"`
+	Replaced     bool   `json:"replaced"`
+	Cloned       bool   `json:"cloned"`
+	Command      string `json:"command"`
 }
 
 type workspaceView struct {

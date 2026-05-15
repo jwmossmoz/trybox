@@ -56,6 +56,14 @@ func ensureVM(ctx context.Context, target targets.Target, workspace *state.Works
 	if resourceOverridesRequested(opts) && b.Exists(ctx, workspace.VMName) {
 		return fmt.Errorf("resource changes require destroying existing VM %q first; run: trybox destroy --repo %s --target %s", workspace.VMName, workspace.RepoRoot, workspace.Target)
 	}
+	if target.Backend == "tart" && target.SourceImage != "" && target.ImageName != "" && !b.Exists(ctx, target.ImageName) {
+		if !opts.JSON {
+			fmt.Fprintf(os.Stderr, "bootstrap: target image missing; creating %s\n", target.ImageName)
+		}
+		if _, err := bootstrapTargetImage(ctx, target, b, false, true); err != nil {
+			return err
+		}
+	}
 	if err := b.Create(ctx, target, *workspace); err != nil {
 		return err
 	}

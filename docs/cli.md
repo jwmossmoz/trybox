@@ -17,7 +17,7 @@ output, and records durable logs/events.
 | Term | Meaning |
 | --- | --- |
 | Target | An OS/version/architecture shape, such as `macos15-arm64`. |
-| Target image | The local reusable base image for a target. The first run expects it to exist. |
+| Target image | The local reusable base image for a target. `trybox run` creates it if it is missing. |
 | Source checkout | The repository directory on the host. Trybox syncs this into the guest. |
 | VM | The repo-bound local VM for one source checkout and one target. |
 | Run | One command execution inside the guest checkout, with durable logs and events. |
@@ -36,20 +36,15 @@ Passing `--target` to a VM-backed command records it as the next default target.
 
 ## Normal Workflow
 
-1. Check prerequisites:
-
-   ```sh
-   trybox doctor
-   trybox target list
-   ```
-
-2. Run a command in a clean VM:
+1. Run a command in a clean VM:
 
    ```sh
    trybox run -- ./build-or-test-command test
    ```
 
-3. Inspect results:
+   If the target image is missing, Trybox bootstraps it first.
+
+2. Inspect results:
 
    ```sh
    trybox logs
@@ -58,26 +53,34 @@ Passing `--target` to a VM-backed command records it as the next default target.
    trybox status
    ```
 
-4. Open the desktop when needed:
+3. Open the desktop when needed:
 
    ```sh
    trybox view
    trybox view --vnc
    ```
 
-5. Delete the VM when you want to start fresh:
+4. Delete the VM when you want to start fresh:
 
    ```sh
    trybox destroy
    ```
 
+Use `bootstrap` separately only to prefetch or refresh the target image:
+
+```sh
+trybox bootstrap
+trybox bootstrap --replace
+```
+
 ## Command Reference
 
 | Command | What it does | VM impact |
 | --- | --- | --- |
+| `trybox bootstrap` | Creates the local target image for the selected target. | Clones or replaces the local target image. |
 | `trybox doctor` | Checks local tools and the selected target image. | Does not start a VM. |
 | `trybox target list` | Lists built-in target names and target image status. | Does not start a VM. |
-| `trybox run -- <command>` | Starts the VM if needed, syncs the checkout, streams the command, and prints phase/timing context. | Creates/starts the VM if needed. |
+| `trybox run -- <command>` | Bootstraps the target image if missing, starts the VM if needed, syncs the checkout, streams the command, and prints phase/timing context. | Creates/starts the VM if needed. |
 | `trybox logs [run-id] [--json]` | Prints the combined command log. `--json` includes content and log paths for agents. | Does not start a VM. |
 | `trybox history` | Lists recent runs. | Does not start a VM. |
 | `trybox events <run-id>` | Prints formatted run events; `--json` returns event records. | Does not start a VM. |
@@ -90,9 +93,10 @@ Passing `--target` to a VM-backed command records it as the next default target.
 
 | Flag | Commands | Meaning |
 | --- | --- | --- |
-| `--target name` | `doctor`, `run`, `status`, `view`, `destroy` | Selects the target, such as `macos15-arm64`. |
+| `--target name` | `bootstrap`, `doctor`, `run`, `status`, `view`, `destroy` | Selects the target, such as `macos15-arm64`. |
 | `--repo path` | `run`, `status`, `view`, `destroy` | Selects the host checkout. |
 | `--json` | Commands with structured output | Emits JSON instead of human-readable output. |
+| `--replace` | `bootstrap` | Replaces the existing local target image. |
 | `--cpu n` | `run` | Sets VM CPU count before VM creation. Existing VMs must be destroyed first. |
 | `--memory-mb n` | `run` | Sets VM memory in MiB before VM creation. Existing VMs must be destroyed first. |
 | `--disk-gb n` | `run` | Sets VM disk size in GiB before VM creation. Existing VMs must be destroyed first. |

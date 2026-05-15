@@ -14,24 +14,24 @@ import (
 
 func viewTarget(target targets.Target, imagePresent bool) targetView {
 	return targetView{
-		Name:         target.Name,
-		OS:           target.OS,
-		Version:      target.Version,
-		Arch:         target.Arch,
-		Runnable:     target.Runnable,
-		ImageName:    target.ImageName,
-		SourceImage:  target.SourceImage,
-		ImagePresent: imagePresent,
-		CloneCommand: targetCloneCommand(target),
-		Notes:        target.Notes,
+		Name:             target.Name,
+		OS:               target.OS,
+		Version:          target.Version,
+		Arch:             target.Arch,
+		Runnable:         target.Runnable,
+		ImageName:        target.ImageName,
+		SourceImage:      target.SourceImage,
+		ImagePresent:     imagePresent,
+		BootstrapCommand: targetBootstrapCommand(target),
+		Notes:            target.Notes,
 	}
 }
 
-func targetCloneCommand(target targets.Target) string {
-	if target.SourceImage == "" || target.ImageName == "" {
+func targetBootstrapCommand(target targets.Target) string {
+	if target.ImageName == "" {
 		return ""
 	}
-	return "tart clone " + shellQuote(target.SourceImage) + " " + shellQuote(target.ImageName)
+	return "trybox bootstrap --target " + shellQuote(target.Name)
 }
 
 func viewWorkspace(workspace state.Workspace) workspaceView {

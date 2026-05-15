@@ -23,13 +23,14 @@ them in the guest or make sure they are included in the synced checkout.
 ## What Happens On `run`
 
 1. Trybox resolves the target and source checkout.
-2. It creates or reuses the repo-bound VM for that target.
-3. It starts the VM headless if it is not already running.
-4. It builds a manifest from tracked files, VCS metadata, and nonignored local
+2. It bootstraps the local target image if it is missing.
+3. It creates or reuses the repo-bound VM for that target.
+4. It starts the VM headless if it is not already running.
+5. It builds a manifest from tracked files, VCS metadata, and nonignored local
    files.
-5. It syncs that manifest into the guest checkout and removes stale files.
-6. It runs the command from `/Users/admin/trybox`.
-7. It records stdout, stderr, combined logs, run metadata, and events under
+6. It syncs that manifest into the guest checkout and removes stale files.
+7. It runs the command from `/Users/admin/trybox`.
+8. It records stdout, stderr, combined logs, run metadata, and events under
    `~/.trybox/runs`.
 
 ## Output For Humans And Agents

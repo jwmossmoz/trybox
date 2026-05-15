@@ -20,6 +20,8 @@ func Run(ctx context.Context, args []string) error {
 		}
 		usage(os.Stdout)
 		return nil
+	case "bootstrap":
+		return bootstrap(ctx, args[1:])
 	case "doctor":
 		return doctor(ctx, args[1:])
 	case "target":
