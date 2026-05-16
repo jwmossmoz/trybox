@@ -116,12 +116,23 @@ Before `trybox bootstrap` exists, build the default local target image with:
 ci/build-local-macos-image.sh --replace
 ```
 
-The script runs `packer init`, `packer validate`, and `packer build` against
-`ci/macos/packer/trybox.pkr.hcl`. The template creates a fresh Tart VM from a
-macOS restore image with `from_ipsw`, drives Setup Assistant with a boot command,
-runs the scripts in `ci/macos/provision.d`, stops the VM, and the wrapper
-renames a successful temporary VM to Trybox's local target image name, such as
-`trybox-macos15-arm64-image`.
+The script runs three Packer phases in sequence against the same temporary VM,
+then renames it to Trybox's local target image name, such as
+`trybox-macos15-arm64-image`:
+
+1. `ci/macos/packer/trybox.pkr.hcl` — creates a fresh Tart VM from a macOS
+   restore image with `from_ipsw`, drives Setup Assistant with a boot command,
+   and runs the non-TCC scripts in `ci/macos/provision.d`.
+2. `ci/macos/packer/trybox-disable-sip.pkr.hcl` — reboots the VM into Recovery
+   and disables SIP via a boot command. Required because the system TCC.db is
+   SIP-protected on macOS 15 and later, so the next phase can write to it.
+3. `ci/macos/packer/trybox-finalize.pkr.hcl` — boots the VM normally with SIP
+   off and runs `030-tcc-ui-automation.sh` to pre-grant Accessibility,
+   ScreenCapture, PostEvent, and AppleEvents to `osascript` and the SSH
+   keygen wrapper.
+
+The three-phase shape is the same pattern Cirrus Labs uses in
+`cirruslabs/macos-image-templates`.
 
 Use it with an explicit IPSW path or URL when the target default is not the
 macOS build you want:
@@ -130,14 +141,34 @@ macOS build you want:
 ci/build-local-macos-image.sh --ipsw /path/to/UniversalMac_15.x_Restore.ipsw --replace
 ```
 
+The build script's `--display` value controls the Tart VM's virtual display. On
+macOS guests that can show up in Packer logs as a Retina backing framebuffer
+twice as large, for example `1920x1200` appearing as `3840x2400`. That does not
+mean the host's physical 4K monitor changed the template geometry.
+
 The provision scripts intentionally mirror the useful parts of Cirrus Labs'
 Packer template: shell profile setup, high file descriptor limits, Spotlight
 disablement, Homebrew build dependencies, Rosetta, GitHub known hosts, Xcode
 first-launch handling when Xcode exists, TCC grants for UI automation, and the
 Tart guest agent.
 
-After the image exists locally, try it from a Firefox checkout:
+After the image exists locally, try it from a source checkout:
 
 ```sh
-TRYBOX_TARGET=macos15-arm64 trybox run -- ./mach --version
+TRYBOX_TARGET=macos15-arm64 trybox run -- sw_vers
+```
+
+### `ssh: ... No route to host` on macOS 15+
+
+If the build reaches Packer's SSH step and fails with `ssh: connect to host ...
+port 22: No route to host`, first make sure Packer is using a current
+`cirruslabs/tart` plugin. Cirrus Labs documents this as a macOS Sequoia Local
+Network privacy issue on the host, not as a guest image failure.
+
+When the plugin is current and the error persists, allow the private address
+ranges Tart VMs can use, then reboot the host:
+
+```sh
+sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16"
+sudo defaults write com.apple.network.local-network AllowedWiFiLocalNetworkAddresses -array "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16"
 ```

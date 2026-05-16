@@ -228,9 +228,13 @@ if vm_exists "$IMAGE_NAME" && ((REPLACE == 0)); then
 fi
 
 MEMORY_GB=$(((MEMORY_MB + 1023) / 1024))
+SETUP_FLOW="macos15"
+case "$TARGET" in
+  macos26-*) SETUP_FLOW="macos26" ;;
+esac
 trap cleanup EXIT
 
-vars=(
+install_vars=(
   -var "vm_name=$BUILD_VM"
   -var "ipsw=$IPSW"
   -var "cpu_count=$CPU"
@@ -238,17 +242,46 @@ vars=(
   -var "disk_size_gb=$DISK"
   -var "display=$DISPLAY"
   -var "headless=$HEADLESS"
+  -var "setup_flow=$SETUP_FLOW"
 )
+
+phase_vars=(
+  -var "vm_name=$BUILD_VM"
+)
+
+install_template="$PACKER_DIR/trybox.pkr.hcl"
+disable_sip_template="$PACKER_DIR/trybox-disable-sip.pkr.hcl"
+finalize_template="$PACKER_DIR/trybox-finalize.pkr.hcl"
+
+for tmpl in "$install_template" "$disable_sip_template" "$finalize_template"; do
+  [[ -f "$tmpl" ]] || die "Packer template missing: $tmpl"
+done
 
 echo "target: $TARGET"
 echo "IPSW: $IPSW"
 echo "temporary build VM: $BUILD_VM"
 echo "final image: $IMAGE_NAME"
 echo "resources: ${CPU}cpu ${MEMORY_GB}GB ${DISK}GB $DISPLAY"
+echo "setup flow: $SETUP_FLOW"
 
-packer init "$PACKER_DIR"
-packer validate "${vars[@]}" "$PACKER_DIR"
-packer build "${vars[@]}" "$PACKER_DIR"
+packer init "$install_template"
+packer validate "${install_vars[@]}" "$install_template"
+packer validate "${phase_vars[@]}" "$disable_sip_template"
+packer validate "${phase_vars[@]}" "$finalize_template"
+
+echo
+echo "=== phase 1/3: install ==="
+packer build "${install_vars[@]}" "$install_template"
+
+echo
+echo "=== phase 2/3: disable SIP (recovery boot) ==="
+tart stop "$BUILD_VM" --timeout 60 >/dev/null 2>&1 || true
+packer build "${phase_vars[@]}" "$disable_sip_template"
+
+echo
+echo "=== phase 3/3: finalize (TCC writes) ==="
+tart stop "$BUILD_VM" --timeout 60 >/dev/null 2>&1 || true
+packer build "${phase_vars[@]}" "$finalize_template"
 
 tart stop "$BUILD_VM" --timeout 60 >/dev/null 2>&1 || true
 
